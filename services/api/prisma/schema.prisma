@@ -1,0 +1,32 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model restaurants {
+  id              Int                       @id @default(autoincrement())
+  name_default    String
+  city            String?
+  district        String?
+  address_line1   String?
+  cuisine_tags    String[]
+  price_level     Int?                      @db.SmallInt
+  veg_friendly    Boolean?                  @default(false)
+  halal_certified Boolean?                  @default(false)
+  geom            Unsupported("geography")?
+  created_at      DateTime?                 @default(now()) @db.Timestamptz(6)
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model spatial_ref_sys {
+  srid      Int     @id
+  auth_name String? @db.VarChar(256)
+  auth_srid Int?
+  srtext    String? @db.VarChar(2048)
+  proj4text String? @db.VarChar(2048)
+}

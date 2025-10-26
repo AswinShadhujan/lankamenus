@@ -1,0 +1,42 @@
+version: "3.9"
+
+services:
+  db:
+    image: postgis/postgis:16-3.4
+    container_name: lm_db
+    environment:
+      POSTGRES_DB: ${POSTGRESDB}
+      POSTGRES_USER: ${POSTGRESUSER}
+      POSTGRES_PASSWORD: ${POSTGRESPASSWORD}
+    ports:
+      - "${POSTGRESPORT}:5432"
+    volumes:
+      - lmdb_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRESUSER} -d ${POSTGRESDB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  meilisearch:
+    image: getmeili/meilisearch:v1.7
+    container_name: lm_meili
+    environment:
+      MEILI_MASTER_KEY: ${MEILIMASTERKEY}
+    ports:
+      - "${MEILIPORT}:7700"
+    volumes:
+      - lm_meili_data:/meilidata
+
+  redis:
+    image: redis:7
+    container_name: lm_redis
+    ports:
+      - "${REDISPORT}:6379"
+    volumes:
+      - lm_redis_data:/data
+
+volumes:
+  lmdb_data:
+  lm_meili_data:
+  lm_redis_data:
