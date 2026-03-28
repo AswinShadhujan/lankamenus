@@ -1,6 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { RestaurantsController } from './restaurants.controller';
 import { RestaurantsService } from './restaurants.service';
+import { GooglePlacesService } from '../integrations/google/google-places.service';
+import { MenusService } from '../menus/menus.service';
 
 describe('RestaurantsController', () => {
   let controller: RestaurantsController;
@@ -18,6 +20,14 @@ describe('RestaurantsController', () => {
             update: jest.fn(),
             delete: jest.fn(),
           },
+        },
+        {
+          provide: GooglePlacesService,
+          useValue: {},
+        },
+        {
+          provide: MenusService,
+          useValue: {},
         },
       ],
     }).compile();

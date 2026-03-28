@@ -67,7 +67,9 @@ jobs:
 
       - name: Unit test API
         working-directory: services/api
-        run: pnpm run test -- --passWithNoTests
+        # Use plain `pnpm run test`; do not use `-- --passWithNoTests` (pnpm forwards a `--` that makes
+        # Jest treat `--passWithNoTests` as a path pattern). passWithNoTests is set in package.json jest config.
+        run: pnpm run test
 
       - name: Run API migrations (e2e DB)
         working-directory: services/api
