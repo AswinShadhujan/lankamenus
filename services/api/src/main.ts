@@ -1,19 +1,11 @@
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ConfigService } from '@nestjs/config';
+import { applyProductionConfig } from './common/bootstrap-app';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
-
-  // ✅ Enable CORS for your local dev environments
-  app.enableCors({
-    origin: [
-      'http://localhost:3000',   // Next.js web
-      'http://localhost:19006',  // Expo web
-      'http://127.0.0.1:19006',  // Expo alternative
-    ],
-    credentials: true,
-  });
+  applyProductionConfig(app);
 
   const configService = app.get(ConfigService);
   const port = configService.get<number>('PORT') ?? 3001;

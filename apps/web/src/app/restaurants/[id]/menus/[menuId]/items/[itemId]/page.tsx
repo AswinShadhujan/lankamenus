@@ -1,0 +1,286 @@
+'use client';
+
+import { useEffect, useMemo, useState } from 'react';
+import { useParams, useRouter } from 'next/navigation';
+import Link from 'next/link';
+import api from '@/lib/api';
+import { parseIngredientParts } from '@/lib/menu-ingredients';
+import { DishDetail, type Menu, type MenuItem } from '@/types/menu';
+import { RatingBadge } from '@/components/ui/RatingBadge';
+import { Skeleton } from '@/components/ui/Skeleton';
+import { ErrorState } from '@/components/ui/ErrorState';
+import { DishCard } from '@/components/ui/DishCard';
+
+function formatPrice(price: number | string | null | undefined): string | null {
+  if (price == null) return null;
+  const num = typeof price === 'string' ? parseFloat(price) : price;
+  if (isNaN(num)) return null;
+  return num.toFixed(2);
+}
+
+export default function DishDetailPage() {
+  const params = useParams();
+  const router = useRouter();
+  const id = params?.id as string;
+  const menuId = params?.menuId as string;
+  const itemId = params?.itemId as string;
+
+  const [dish, setDish] = useState<DishDetail | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [imageError, setImageError] = useState(false);
+  const [relatedItems, setRelatedItems] = useState<MenuItem[]>([]);
+
+  useEffect(() => {
+    if (!menuId || !itemId) {
+      setLoading(false);
+      setError('Invalid link');
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    api
+      .get<DishDetail>(`/menus/${menuId}/items/${itemId}`)
+      .then((res) => {
+        setDish(res.data);
+        setImageError(false);
+      })
+      .catch((err) => {
+        if (err.response?.status === 404) {
+          setError('Dish not found');
+        } else {
+          setError('Failed to load dish');
+        }
+        console.error(err);
+      })
+      .finally(() => setLoading(false));
+  }, [menuId, itemId]);
+
+  useEffect(() => {
+    if (!menuId || !dish) {
+      setRelatedItems([]);
+      return;
+    }
+    let cancelled = false;
+    api
+      .get<Menu>(`/menus/${menuId}`)
+      .then((res) => {
+        if (cancelled) return;
+        const all: MenuItem[] =
+          res.data.menu_sections?.flatMap((s) => s.menu_items ?? []) ?? [];
+        const others = all.filter((it) => String(it.id) !== String(dish.id)).slice(0, 8);
+        setRelatedItems(others);
+      })
+      .catch(() => {
+        if (!cancelled) setRelatedItems([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [menuId, dish?.id]);
+
+  const goFullMenu = () => {
+    if (dish) router.push(`/restaurants/${dish.restaurant_id}`);
+  };
+
+  const ingredientParts = useMemo(
+    () => (dish ? parseIngredientParts(dish.ingredients) : []),
+    [dish],
+  );
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-neutral-950 pb-8">
+        <main className="mx-auto max-w-3xl space-y-6 px-4 py-6">
+          <Skeleton className="h-4 w-48 bg-neutral-800" />
+          <Skeleton className="h-[320px] w-full rounded-2xl bg-neutral-800" />
+          <Skeleton className="h-8 w-3/4 bg-neutral-800" />
+          <Skeleton className="h-5 w-24 bg-neutral-800" />
+        </main>
+      </div>
+    );
+  }
+
+  if (error || !dish) {
+    return (
+      <div className="min-h-screen bg-neutral-950 pb-8">
+        <main className="mx-auto max-w-3xl space-y-6 px-4 py-6">
+          <ErrorState message={error ?? 'Dish not found'} />
+          <div className="flex gap-4">
+            {id ? (
+              <Link
+                href={`/restaurants/${id}`}
+                className="text-sm font-medium text-red-500 underline-offset-2 hover:underline"
+              >
+                ← Back to restaurant
+              </Link>
+            ) : null}
+            <Link
+              href="/"
+              className="text-sm font-medium text-red-500 underline-offset-2 hover:underline"
+            >
+              ← Back to restaurants
+            </Link>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
+  const priceFormatted = formatPrice(dish.price);
+  const imageSrc = dish.image_url && !imageError ? dish.image_url : null;
+  const isPopular = !!dish.is_popular;
+  const isRecommended = !!dish.is_recommended;
+  const isAvailable = dish.is_available !== false;
+
+  return (
+    <div className="relative min-h-screen bg-neutral-950 pb-8 text-white">
+      <main className="mx-auto max-w-3xl space-y-6 px-4 py-6">
+        <nav className="text-sm text-gray-400">
+          <Link href="/" className="text-red-500 transition-opacity hover:opacity-80">
+            Restaurants
+          </Link>
+          <span className="mx-2">/</span>
+          <Link
+            href={`/restaurants/${dish.restaurant_id}`}
+            className="text-red-500 transition-opacity hover:opacity-80"
+          >
+            {dish.restaurant_name}
+          </Link>
+          <span className="mx-2">/</span>
+          <span className="text-white">{dish.name}</span>
+        </nav>
+
+        <div className="relative overflow-hidden rounded-2xl">
+          {imageSrc ? (
+            // eslint-disable-next-line @next/next/no-img-element -- remote dish URLs
+            <img
+              src={imageSrc}
+              alt={dish.name}
+              className="h-[320px] w-full object-cover"
+              onError={() => setImageError(true)}
+            />
+          ) : (
+            <div className="flex h-[320px] w-full items-center justify-center bg-neutral-800 text-5xl opacity-40">
+              🍽
+            </div>
+          )}
+
+          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent" />
+
+          <div className="absolute bottom-4 left-4 right-4">
+            <h1 className="text-2xl font-semibold text-white">{dish.name}</h1>
+
+            <div className="mt-2 flex items-center justify-between">
+              <div className="flex flex-wrap gap-2">
+                {isPopular && (
+                  <span className="rounded-full bg-orange-500/90 px-2 py-1 text-xs text-white shadow">
+                    🔥 Popular
+                  </span>
+                )}
+
+                {isRecommended && (
+                  <span className="rounded-full bg-purple-500/90 px-2 py-1 text-xs text-white shadow">
+                    ⭐ Recommended
+                  </span>
+                )}
+
+                {isAvailable && (
+                  <span className="rounded-full bg-green-500/90 px-2 py-1 text-xs text-white shadow">
+                    ● Available
+                  </span>
+                )}
+
+                {!isAvailable && (
+                  <span className="rounded-full bg-red-500/90 px-2 py-1 text-xs text-white shadow">
+                    ● Unavailable
+                  </span>
+                )}
+
+                {dish.veg ? (
+                  <span className="rounded-full border border-white/30 px-2 py-1 text-xs text-gray-200">
+                    Vegetarian
+                  </span>
+                ) : null}
+              </div>
+
+              <span className="text-lg font-semibold text-orange-400">
+                {priceFormatted != null ? `LKR ${priceFormatted}` : 'LKR —'}
+              </span>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-6 space-y-2">
+          <h3 className="text-xs font-semibold uppercase text-gray-400">About this dish</h3>
+
+          <p className="text-sm text-gray-300">
+            {dish.description?.trim() ||
+              'A delicious dish prepared with fresh ingredients and authentic flavors.'}
+          </p>
+        </div>
+
+        {isPopular && (
+          <div className="mt-3 text-xs text-orange-400">
+            🔥 Frequently ordered by customers near you
+          </div>
+        )}
+
+        <p className="text-xs text-gray-400">
+          {dish.section} · {dish.menu_name}
+        </p>
+
+        {dish.rating != null && (
+          <div>
+            <RatingBadge rating={dish.rating} count={dish.rating_count} />
+          </div>
+        )}
+
+        {ingredientParts.length > 0 && (
+          <div className="space-y-2">
+            <h3 className="text-xs font-semibold uppercase text-gray-400">Ingredients</h3>
+            <ul className="flex flex-wrap gap-2">
+              {ingredientParts.map((ing, idx) => (
+                <li
+                  key={`${idx}-${ing}`}
+                  className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-gray-300"
+                >
+                  {ing}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        <button
+          type="button"
+          onClick={goFullMenu}
+          className="mt-6 w-full rounded-xl bg-red-500 py-3 font-medium text-white transition hover:bg-red-600"
+        >
+          View Full Menu of {dish.restaurant_name}
+        </button>
+
+        <div className="space-y-3">
+          <h3 className="mt-8 mb-3 text-lg font-semibold text-white">More from this restaurant</h3>
+          <div className="space-y-3">
+            {relatedItems.map((item) => (
+              <DishCard
+                key={item.id}
+                name={item.name}
+                description={item.description}
+                price={item.price}
+                veg={item.veg}
+                imageUrl={item.image_url}
+                href={`/restaurants/${dish.restaurant_id}/menus/${menuId}/items/${item.id}`}
+                restaurantId={String(dish.restaurant_id)}
+                menuId={String(menuId)}
+                itemId={String(item.id)}
+              />
+            ))}
+          </div>
+        </div>
+      </main>
+    </div>
+  );
+}

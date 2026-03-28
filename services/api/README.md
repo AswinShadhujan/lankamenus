@@ -50,7 +50,7 @@ $ pnpm run start:prod
 # unit tests
 $ pnpm run test
 
-# e2e tests
+# e2e tests (always runs GET / and GET /health; set E2E_DATABASE_READY=1 when DB has migrations for full suite)
 $ pnpm run test:e2e
 
 # test coverage

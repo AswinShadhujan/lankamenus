@@ -7,7 +7,26 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model districts {
+  id     String   @id
+  name   String
+  cities cities[]
+}
+
+model cities {
+  id          Int       @id @default(autoincrement())
+  name        String
+  district_id String
+  latitude    Float
+  longitude   Float
+  district    districts @relation(fields: [district_id], references: [id])
+
+  @@index([district_id])
+  @@index([name])
+}
+
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+/// This model contains an index with non-default null sort order and requires additional setup for migrations. Visit https://pris.ly/d/default-index-null-ordering for more info.
 model restaurants {
   id              Int                       @id @default(autoincrement())
   name_default    String
@@ -20,6 +39,84 @@ model restaurants {
   halal_certified Boolean?                  @default(false)
   geom            Unsupported("geography")?
   created_at      DateTime?                 @default(now()) @db.Timestamptz(6)
+  google_place_id String?                   @unique @map("google_place_id")
+  latitude        Float?                    @map("latitude")
+  longitude       Float?                    @map("longitude")
+  rating          Float?                    @map("rating")
+  photo_reference String?                   @map("photo_reference")
+  category        String?                   @map("category")
+  updated_at      DateTime?                 @updatedAt @map("updated_at")
+  slug            String?                   @unique @map("slug")
+  /// * Number of rating reviews (e.g. Google user count); drives popular_score.
+  rating_count    Int                       @default(0) @map("rating_count")
+  /// * Denormalized engagement; trending_score. Increment on view tracking later.
+  view_count      Int                       @default(0) @map("view_count")
+  /// * Denormalized from favourites; kept in sync in FavouritesService.
+  favorite_count  Int                       @default(0) @map("favorite_count")
+  /// * GENERATED: rating * ln(rating_count + 1) — read-only in DB.
+  popular_score   Float?                    @default(dbgenerated("(COALESCE(rating, (0)::double precision) * ln(((GREATEST(rating_count, 0) + 1))::double precision))")) @map("popular_score")
+  /// * GENERATED: engagement blend — read-only in DB.
+  trending_score  Float?                    @default(dbgenerated("((((COALESCE(view_count, 0))::double precision * (0.4)::double precision) + ((COALESCE(favorite_count, 0))::double precision * (0.4)::double precision)) + ((COALESCE(rating, (0)::double precision) * (GREATEST(rating_count, 0))::double precision) * (0.2)::double precision))")) @map("trending_score")
+  favourites      favourites[]
+  menus           menus[]
+
+  @@index([city])
+  @@index([district])
+  @@index([price_level])
+  @@index([popular_score(sort: Desc)])
+  @@index([rating(sort: Desc)], map: "restaurants_rating_list_idx")
+  @@index([trending_score(sort: Desc)])
+}
+
+model menus {
+  id            Int             @id @default(autoincrement())
+  restaurant_id Int
+  name          String
+  is_active     Boolean         @default(true)
+  created_at    DateTime        @default(now())
+  updated_at    DateTime        @updatedAt
+  menu_sections menu_sections[]
+  restaurant    restaurants     @relation(fields: [restaurant_id], references: [id], onDelete: Cascade)
+
+  @@index([restaurant_id])
+}
+
+model menu_sections {
+  id         Int          @id @default(autoincrement())
+  menu_id    Int
+  name       String
+  sort_order Int          @default(0)
+  created_at DateTime     @default(now())
+  updated_at DateTime     @updatedAt
+  menu_items menu_items[]
+  menu       menus        @relation(fields: [menu_id], references: [id], onDelete: Cascade)
+
+  @@index([menu_id])
+}
+
+model menu_items {
+  id              Int           @id @default(autoincrement())
+  menu_section_id Int
+  name            String
+  description     String?
+  price           Decimal?      @db.Decimal(10, 2)
+  currency        String?       @default("LKR")
+  veg             Boolean?      @default(false)
+  sort_order      Int           @default(0)
+  created_at      DateTime      @default(now())
+  updated_at      DateTime      @updatedAt
+  ingredients     String[]      @default([])
+  rating          Float?        @map("rating")
+  rating_count    Int?          @default(0) @map("rating_count")
+  /// Dish detail views; used by GET /dishes/trending and incremented in MenusService.findOneItem.
+  click_count     Int           @default(0) @map("click_count")
+  image_url       String?       @map("image_url")
+  is_available    Boolean       @default(true) @map("is_available")
+  is_popular      Boolean       @default(false) @map("is_popular")
+  is_recommended  Boolean       @default(false) @map("is_recommended")
+  menu_section    menu_sections @relation(fields: [menu_section_id], references: [id], onDelete: Cascade)
+
+  @@index([menu_section_id])
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -29,4 +126,53 @@ model spatial_ref_sys {
   auth_srid Int?
   srtext    String? @db.VarChar(2048)
   proj4text String? @db.VarChar(2048)
+}
+
+model users {
+  id             Int              @id @default(autoincrement())
+  email          String           @unique
+  password       String?
+  name           String?
+  role           String           @default("user")
+  created_at     DateTime         @default(now())
+  avatar_url     String?          @map("avatar_url")
+  auth_providers auth_providers[]
+  favourites     favourites[]
+}
+
+model auth_providers {
+  id          Int      @id @default(autoincrement())
+  provider    String
+  provider_id String   @map("provider_id")
+  user_id     Int      @map("user_id")
+  created_at  DateTime @default(now())
+  user        users    @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([provider, provider_id])
+  @@index([user_id])
+}
+
+model favourites {
+  id            Int         @id @default(autoincrement())
+  user_id       Int
+  restaurant_id Int
+  created_at    DateTime    @default(now())
+  restaurant    restaurants @relation(fields: [restaurant_id], references: [id], onDelete: Cascade)
+  user          users       @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([user_id, restaurant_id])
+}
+
+/// Checkpoint for resumable restaurant import (tile-based). Completed tiles are skipped on resume.
+model import_tiles_progress {
+  id         Int       @id @default(autoincrement())
+  district   String    @map("district")
+  city       String    @map("city")
+  tile_lat   Float     @map("tile_lat")
+  tile_lng   Float     @map("tile_lng")
+  status     String    @map("status")
+  scanned_at DateTime? @map("scanned_at") @db.Timestamptz(6)
+
+  @@unique([district, city, tile_lat, tile_lng])
+  @@index([status])
 }

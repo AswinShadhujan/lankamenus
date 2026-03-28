@@ -1,0 +1,97 @@
+# Phase 8.5 — CI: install, lint, test (unit + e2e), build API and web.
+# E2E runs against a Postgres service container; set E2E_DATABASE_READY and run migrations.
+# Secrets (for e2e/deploy): DATABASE_URL can use service container; JWT_SECRET set in env (use GitHub Secrets in deploy).
+
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: lankamenus_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/lankamenus_test?schema=public
+      JWT_SECRET: ci-test-secret-at-least-32-characters-long
+      E2E_DATABASE_READY: '1'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+          run_install: false
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Cache pnpm store
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/pnpm/store
+          key: ${{ runner.os }}-pnpm-${{ hashFiles('services/api/pnpm-lock.yaml', 'apps/web/pnpm-lock.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-
+
+      - name: Install API dependencies
+        working-directory: services/api
+        run: pnpm install --frozen-lockfile
+
+      - name: Lint API
+        working-directory: services/api
+        run: pnpm run lint
+
+      - name: Unit test API
+        working-directory: services/api
+        run: pnpm run test -- --passWithNoTests
+
+      - name: Run API migrations (e2e DB)
+        working-directory: services/api
+        run: pnpm exec prisma migrate deploy
+
+      - name: E2E test API
+        working-directory: services/api
+        run: pnpm run test:e2e
+
+      - name: Build API
+        working-directory: services/api
+        run: pnpm run build
+
+      - name: Install web dependencies
+        working-directory: apps/web
+        run: pnpm install --frozen-lockfile
+
+      # Lint web optional (enable when apps/web lint is clean)
+      # - name: Lint web
+      #   working-directory: apps/web
+      #   run: pnpm run lint
+
+      - name: Build web
+        working-directory: apps/web
+        run: pnpm run build
+        env:
+          NEXT_PUBLIC_API_URL: http://localhost:3001

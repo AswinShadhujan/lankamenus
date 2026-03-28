@@ -1,17 +1,23 @@
-# Node modules
+# dependencies
 node_modules/
 
-# Environment files
+# env files (CRITICAL)
 .env
-.env.local
+.env.*
+!.env.example
+!.env.local.example
 
-# Build output
+# build outputs
+.next/
+out/
 dist/
+build/
 
-# Logs
-*.log
+# logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
 
-# macOS / IDE files
+# OS
 .DS_Store
-.vscode/
-.idea/
+Thumbs.db
