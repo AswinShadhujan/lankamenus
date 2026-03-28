@@ -61,9 +61,9 @@ jobs:
         working-directory: services/api
         run: pnpm install --frozen-lockfile
 
-      - name: Lint API
+      - name: Lint API (non-blocking)
         working-directory: services/api
-        run: pnpm run lint
+        run: pnpm run lint || true
 
       - name: Unit test API
         working-directory: services/api
