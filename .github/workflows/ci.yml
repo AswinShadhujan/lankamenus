@@ -16,7 +16,8 @@ jobs:
 
     services:
       postgres:
-        image: postgres:15
+        # PostGIS required for restaurants.geom (geography) in Prisma migrations
+        image: postgis/postgis:15-3.4
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
@@ -71,9 +72,11 @@ jobs:
         # Jest treat `--passWithNoTests` as a path pattern). passWithNoTests is set in package.json jest config.
         run: pnpm run test
 
-      - name: Run API migrations (e2e DB)
+      - name: Prisma generate + migrate (e2e DB)
         working-directory: services/api
-        run: pnpm exec prisma migrate deploy
+        run: |
+          pnpm exec prisma generate
+          pnpm exec prisma migrate deploy
 
       - name: E2E test API
         working-directory: services/api
