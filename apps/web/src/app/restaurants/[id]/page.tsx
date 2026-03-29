@@ -109,7 +109,7 @@ export default function RestaurantDetailPage() {
         } else {
           setError('Failed to load restaurant');
         }
-        console.error(err);
+        if (process.env.NODE_ENV === 'development') console.error(err);
       })
       .finally(() => setLoading(false));
   }, [id]);

@@ -24,16 +24,18 @@ export function RestaurantPhotoImage({
   className,
   alt = '',
 }: RestaurantPhotoImageProps) {
+  const apiBase = getApiBaseUrl();
   const hasPhoto = hasRestaurantPhoto(restaurant);
-  const proxyUrl = `${getApiBaseUrl()}/restaurants/${restaurant.id}/photo`;
+  const canUseProxy = hasPhoto && apiBase.length > 0;
+  const proxyUrl = canUseProxy
+    ? `${apiBase.replace(/\/$/, '')}/restaurants/${restaurant.id}/photo`
+    : '';
 
-  const [mode, setMode] = useState<LoadMode>(() =>
-    hasPhoto ? 'proxy' : 'placeholder',
-  );
+  const [mode, setMode] = useState<LoadMode>(() => (canUseProxy ? 'proxy' : 'placeholder'));
 
   useEffect(() => {
-    setMode(hasPhoto ? 'proxy' : 'placeholder');
-  }, [restaurant.id, restaurant.photo_reference, hasPhoto]);
+    setMode(canUseProxy ? 'proxy' : 'placeholder');
+  }, [restaurant.id, restaurant.photo_reference, canUseProxy]);
 
   if (mode === 'solid') {
     return (
@@ -45,7 +47,7 @@ export function RestaurantPhotoImage({
     );
   }
 
-  if (mode === 'proxy') {
+  if (mode === 'proxy' && proxyUrl) {
     return (
       <img
         src={proxyUrl}

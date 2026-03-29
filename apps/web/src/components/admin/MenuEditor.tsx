@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
-import api from '@/lib/api';
+import api, { resolvePublicMediaUrl } from '@/lib/api';
 import {
   formatIngredientsBulletLine,
   formatIngredientsCommaInput,
@@ -97,13 +97,13 @@ function DishImagePreview({
   variant: 'thumb' | 'editor';
 }) {
   const [loadError, setLoadError] = useState(false);
-  const trimmed = url.trim();
+  const resolved = resolvePublicMediaUrl(url.trim());
 
   useEffect(() => {
     setLoadError(false);
-  }, [trimmed]);
+  }, [resolved]);
 
-  if (!trimmed) return null;
+  if (!resolved) return null;
 
   if (loadError) {
     return (
@@ -124,7 +124,7 @@ function DishImagePreview({
   return (
     // eslint-disable-next-line @next/next/no-img-element -- admin previews arbitrary HTTPS URLs
     <img
-      src={trimmed}
+      src={resolved}
       alt=""
       loading="lazy"
       decoding="async"

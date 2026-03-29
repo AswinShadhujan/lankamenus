@@ -5,6 +5,7 @@ import Link from 'next/link';
 import type { CombinedSearchDish, CombinedSearchResponse, CombinedSearchRestaurant } from '@/types/search';
 import { MatchHighlight } from '@/components/search/MatchHighlight';
 import { RestaurantPhotoImage } from '@/components/ui/RestaurantPhotoImage';
+import { resolvePublicMediaUrl } from '@/lib/api';
 import { normalizeRestaurantCategories } from '@/lib/foodCategories';
 
 const SKELETON_ROW_COUNT = 4;
@@ -108,7 +109,7 @@ function DishRow({
         className="flex min-h-[52px] touch-manipulation items-center gap-3 rounded-xl px-3 py-2.5 transition-colors duration-150 hover:bg-[var(--surface)] active:bg-[var(--surface)] md:min-h-[48px]"
         style={{ WebkitTapHighlightColor: 'transparent' }}
       >
-        <DishThumb src={d.image} alt="" />
+        <DishThumb src={resolvePublicMediaUrl(d.image)} alt="" />
         <div className="min-w-0 flex-1">
           <p className="text-body font-semibold leading-snug" style={{ color: 'var(--text-primary)' }}>
             <MatchHighlight text={d.name} query={q} />

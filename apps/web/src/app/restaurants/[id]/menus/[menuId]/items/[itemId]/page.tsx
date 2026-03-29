@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import api from '@/lib/api';
+import api, { resolvePublicMediaUrl } from '@/lib/api';
 import { parseIngredientParts } from '@/lib/menu-ingredients';
 import { DishDetail, type Menu, type MenuItem } from '@/types/menu';
 import { RatingBadge } from '@/components/ui/RatingBadge';
@@ -52,7 +52,7 @@ export default function DishDetailPage() {
         } else {
           setError('Failed to load dish');
         }
-        console.error(err);
+        if (process.env.NODE_ENV === 'development') console.error(err);
       })
       .finally(() => setLoading(false));
   }, [menuId, itemId]);
@@ -129,7 +129,8 @@ export default function DishDetailPage() {
   }
 
   const priceFormatted = formatPrice(dish.price);
-  const imageSrc = dish.image_url && !imageError ? dish.image_url : null;
+  const resolvedImage = resolvePublicMediaUrl(dish.image_url);
+  const imageSrc = resolvedImage && !imageError ? resolvedImage : null;
   const isPopular = !!dish.is_popular;
   const isRecommended = !!dish.is_recommended;
   const isAvailable = dish.is_available !== false;

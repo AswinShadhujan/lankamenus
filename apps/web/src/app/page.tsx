@@ -208,11 +208,6 @@ export default function HomePage() {
           ? railResults[i].value.data.data ?? []
           : [];
 
-      railResults.forEach((r, i) => {
-        if (r.status === 'rejected') {
-          console.warn(`[home] ranking rail ${i} failed`, r.reason);
-        }
-      });
 
       setPopularRail(pickData(0));
       setTopRatedRail(pickData(1));
@@ -240,7 +235,7 @@ export default function HomePage() {
       const tp = meta?.totalPages ?? (total > 0 ? Math.ceil(total / GRID_PAGE_SIZE) : 0);
       setHasMore(tp > 1);
     } catch (err) {
-      console.error(err);
+      if (process.env.NODE_ENV === 'development') console.error(err);
       setFetchError('Failed to load restaurants. Please try again.');
       setGridRestaurants([]);
       setGridTotal(0);
@@ -279,7 +274,7 @@ export default function HomePage() {
         setHasMore(false);
       }
     } catch (err) {
-      console.error(err);
+      if (process.env.NODE_ENV === 'development') console.error(err);
       setFetchError('Could not load more restaurants.');
     } finally {
       setLoadingMore(false);
@@ -300,7 +295,9 @@ export default function HomePage() {
     api
       .get<District[]>('/districts')
       .then((res) => setDistricts(res.data ?? []))
-      .catch((err) => console.error('Failed to load districts', err));
+      .catch((err) => {
+        if (process.env.NODE_ENV === 'development') console.error('Failed to load districts', err);
+      });
   }, []);
 
   useEffect(() => {

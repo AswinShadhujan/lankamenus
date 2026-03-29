@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { resolvePublicMediaUrl } from '@/lib/api';
 
 type MenuItemCardThumbnailProps = {
   url: string | null | undefined;
@@ -21,11 +22,11 @@ export function MenuItemCardThumbnail({
   className = '',
 }: MenuItemCardThumbnailProps) {
   const [failed, setFailed] = useState(false);
-  const trimmed = url?.trim() ?? '';
+  const resolved = resolvePublicMediaUrl(url);
 
   useEffect(() => {
     setFailed(false);
-  }, [trimmed]);
+  }, [resolved]);
 
   const sizeClass =
     size === 'compact'
@@ -34,7 +35,7 @@ export function MenuItemCardThumbnail({
 
   const boxClass = `flex shrink-0 overflow-hidden border ${sizeClass} ${className}`.trim();
 
-  if (!trimmed || failed) {
+  if (!resolved || failed) {
     return (
       <div
         className={boxClass}
@@ -57,7 +58,7 @@ export function MenuItemCardThumbnail({
       }}
     >
       <img
-        src={trimmed}
+        src={resolved}
         alt={alt}
         loading="lazy"
         decoding="async"

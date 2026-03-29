@@ -1,17 +1,30 @@
 import axios from 'axios';
 
-const baseURL =
-  typeof process.env.NEXT_PUBLIC_API_URL !== 'undefined' && process.env.NEXT_PUBLIC_API_URL !== ''
-    ? process.env.NEXT_PUBLIC_API_URL
-    : 'http://localhost:3001';
+/** Public API base URL (set in Vercel as NEXT_PUBLIC_API_URL). */
+export const API_URL = process.env.NEXT_PUBLIC_API_URL?.trim() || '';
 
 /** Base URL of the API (for building image URLs etc.). */
 export function getApiBaseUrl(): string {
-  return baseURL;
+  return API_URL;
+}
+
+/**
+ * Dish/menu image URLs from the API: absolute https URLs pass through;
+ * root-relative paths (`/upload/...`) are prefixed with the API origin.
+ */
+export function resolvePublicMediaUrl(url: string | null | undefined): string {
+  const t = url?.trim() ?? '';
+  if (!t) return '';
+  if (/^https?:\/\//i.test(t)) return t;
+  if (t.startsWith('//')) return `https:${t}`;
+  if (t.startsWith('/') && API_URL) {
+    return `${API_URL.replace(/\/$/, '')}${t}`;
+  }
+  return t;
 }
 
 const api = axios.create({
-  baseURL,
+  baseURL: API_URL,
   timeout: 15000, // 15s so the app doesn't hang if the API is unreachable
 });
 

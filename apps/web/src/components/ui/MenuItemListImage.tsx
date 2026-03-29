@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { resolvePublicMediaUrl } from '@/lib/api';
 
 type MenuItemListImageProps = {
   url: string | null | undefined;
@@ -13,18 +14,18 @@ type MenuItemListImageProps = {
  */
 export function MenuItemListImage({ url, alt, className = '' }: MenuItemListImageProps) {
   const [failed, setFailed] = useState(false);
-  const trimmed = url?.trim() ?? '';
+  const resolved = resolvePublicMediaUrl(url);
 
   useEffect(() => {
     setFailed(false);
-  }, [trimmed]);
+  }, [resolved]);
 
-  if (!trimmed || failed) return null;
+  if (!resolved || failed) return null;
 
   return (
     // eslint-disable-next-line @next/next/no-img-element -- remote dish URLs from CMS
     <img
-      src={trimmed}
+      src={resolved}
       alt={alt}
       loading="lazy"
       decoding="async"

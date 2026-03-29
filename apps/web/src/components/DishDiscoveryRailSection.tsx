@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import api from '@/lib/api';
+import api, { resolvePublicMediaUrl } from '@/lib/api';
 import type { DishDiscoveryItem } from '@/types/featuredDish';
 import { HorizontalScroll } from '@/components/ui/HorizontalScroll';
 import { useHasMounted } from '@/hooks/useHasMounted';
@@ -151,7 +151,7 @@ export function DishDiscoveryRailSection({
               {dishes.map((d) => {
                 const href = dishHref(d);
                 const priceStr = formatPrice(d.price, d.currency);
-                const img = d.image_url?.trim() ?? '';
+                const img = resolvePublicMediaUrl(d.image_url);
 
                 return (
                   <div
