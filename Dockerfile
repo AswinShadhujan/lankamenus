@@ -2,8 +2,8 @@ FROM node:18-alpine
 
 WORKDIR /app
 
-# Install required libs for Prisma (IMPORTANT)
-RUN apk add --no-cache openssl libc6-compat
+# Prisma engines + native deps (bcrypt, etc.) may need compile on Alpine
+RUN apk add --no-cache openssl libc6-compat python3 make g++
 
 # Enable pnpm
 RUN corepack enable && corepack prepare pnpm@latest --activate
@@ -16,13 +16,19 @@ COPY services/api/package.json ./services/api/
 COPY services/api/prisma ./services/api/prisma
 COPY services/api/prisma.config.ts ./services/api/
 
-# Install dependencies
-RUN pnpm install --frozen-lockfile
+# Schema must exist before any prisma generate (postinstall or manual)
+RUN test -f services/api/prisma/schema.prisma
+
+# Skip lifecycle scripts during install so a stray postinstall cannot run
+# prisma generate before the full tree exists; native modules are rebuilt next.
+RUN pnpm install --frozen-lockfile --ignore-scripts
 
 # Copy full project
 COPY . .
 
-# Generate Prisma client
+RUN pnpm rebuild
+
+# Generate Prisma client (explicit; do not rely on install postinstall)
 RUN pnpm --filter api exec prisma generate
 
 # Build API
