@@ -3,7 +3,7 @@ import { MAX_RESTAURANTS_LIST_CACHE_TTL_SECONDS } from '../cache/cache-keys';
 
 export const envValidationSchema = Joi.object({
   DATABASE_URL: Joi.string().required(),
-  PORT: Joi.number().default(3001),
+  PORT: Joi.number().port().default(3000),
   JWT_SECRET: Joi.string().min(16).required(),
   // Meilisearch (optional; when set, search can use Meilisearch)
   MEILISEARCH_HOST: Joi.string().uri().optional().allow(''),

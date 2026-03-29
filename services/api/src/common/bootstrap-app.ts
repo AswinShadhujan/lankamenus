@@ -39,6 +39,8 @@ export function applyProductionConfig(app: INestApplication): void {
     }),
   );
 
+  const isProduction = process.env.NODE_ENV === 'production';
+
   const corsOrigins = configService.get<string>('CORS_ORIGINS');
   const raw = corsOrigins
     ? corsOrigins.split(',').map((s) => s.trim()).filter(Boolean)
@@ -55,9 +57,12 @@ export function applyProductionConfig(app: INestApplication): void {
     }
   }
 
-  app.enableCors({
-    origin:
-      origin.length > 0 ? origin : raw.length === 0 ? DEFAULT_CORS_ORIGINS : false,
-    credentials: true,
-  });
+  if (origin.length > 0) {
+    app.enableCors({ origin, credentials: true });
+  } else if (isProduction) {
+    // Railway / hosted: allow browser clients from any deployed frontend (set CORS_ORIGINS to restrict).
+    app.enableCors({ origin: true, credentials: true });
+  } else {
+    app.enableCors({ origin: DEFAULT_CORS_ORIGINS, credentials: true });
+  }
 }
