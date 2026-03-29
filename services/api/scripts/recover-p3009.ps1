@@ -9,4 +9,4 @@ if (-not $env:DATABASE_URL) {
 Set-Location (Split-Path $PSScriptRoot -Parent)
 pnpm exec prisma migrate resolve --rolled-back "20250329001000_initial_schema"
 pnpm exec prisma migrate deploy
-Write-Host 'Done. If deploy fails on postgis, use a Postgres with PostGIS enabled.'
+Write-Host 'Done. Railway default Postgres has NO PostGIS — use https://railway.com/template/postgis and set DATABASE_URL to that service, then run this script again.'

@@ -25,6 +25,20 @@ node dist/main.js
 
 **Required:** `PORT`, `DATABASE_URL`, and `JWT_SECRET` must be set (see [Environment variables](#api-environment-variables) below). The API will not start without them (env validation runs at bootstrap).
 
+### Database: PostGIS is required
+
+Migrations run `CREATE EXTENSION postgis` and the `restaurants.geom` column uses **geography** (see `prisma/migrations`). **Railway’s default “PostgreSQL” plugin does not include PostGIS**, so `prisma migrate deploy` fails with `extension "postgis" is not available`.
+
+**On Railway, use a PostGIS-enabled database instead of the plain Postgres template**, for example:
+
+1. In your Railway project, add a database from the **[PostGIS template](https://railway.com/template/postgis)** (or another Postgres image that ships PostGIS).
+2. Copy the new service’s **`DATABASE_URL`** (or `POSTGRES_URL`) into your API service variables as **`DATABASE_URL`** (keep `?schema=public` if you use it).
+3. If a migration previously failed (**P3009** / **P3018**), from `services/api` with that URL set, run:
+   - `pnpm run prisma:migrate:resolve-initial-failed` (marks the failed migration as rolled back), then
+   - `pnpm run prisma:migrate` (or `pnpm run prisma:migrate:recover-from-p3009` only on a clean failed state—see script output).
+
+After switching to PostGIS, redeploy the API so `preDeployCommand` can apply migrations successfully.
+
 ### API environment variables
 
 See `services/api/.env.example` for a template. Summary:
