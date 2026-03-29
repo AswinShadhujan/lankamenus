@@ -1,7 +1,4 @@
-# Phase 8.5 — CI: install, lint, test (unit + e2e), build API and web.
-# E2E runs against a Postgres service container; set E2E_DATABASE_READY and run migrations.
-# Secrets (for e2e/deploy): DATABASE_URL can use service container; JWT_SECRET set in env (use GitHub Secrets in deploy).
-
+# CI: pnpm workspace (api at root) + standalone web app lockfile.
 name: CI
 
 on:
@@ -13,12 +10,10 @@ on:
 jobs:
   ci:
     runs-on: ubuntu-latest
-    # MVP: do not block merges/deployments on CI failures; check logs for real issues.
     continue-on-error: true
 
     services:
       postgres:
-        # PostGIS required for restaurants.geom (geography) in Prisma migrations
         image: postgis/postgis:15-3.4
         env:
           POSTGRES_USER: postgres
@@ -44,7 +39,7 @@ jobs:
       - name: Install pnpm
         uses: pnpm/action-setup@v4
         with:
-          version: 10
+          version: 8.15.9
           run_install: false
 
       - name: Setup Node
@@ -56,49 +51,42 @@ jobs:
         uses: actions/cache@v4
         with:
           path: ~/.local/share/pnpm/store
-          key: ${{ runner.os }}-pnpm-${{ hashFiles('services/api/pnpm-lock.yaml', 'apps/web/pnpm-lock.yaml') }}
+          key: ${{ runner.os }}-pnpm-root-${{ hashFiles('pnpm-lock.yaml', 'pnpm-workspace.yaml', 'package.json', 'services/api/package.json') }}
           restore-keys: |
-            ${{ runner.os }}-pnpm-
+            ${{ runner.os }}-pnpm-root-
 
-      - name: Install API dependencies
-        working-directory: services/api
+      - name: Install workspace (API)
         run: pnpm install --frozen-lockfile
 
       - name: Lint API (non-blocking)
-        working-directory: services/api
-        run: pnpm run lint || true
+        run: pnpm --filter api run lint || true
 
       - name: Unit test API
-        working-directory: services/api
-        # Use plain `pnpm run test`; do not use `-- --passWithNoTests` (pnpm forwards a `--` that makes
-        # Jest treat `--passWithNoTests` as a path pattern). passWithNoTests is set in package.json jest config.
-        run: pnpm run test
+        run: pnpm --filter api run test
 
       - name: Prisma generate + migrate (e2e DB)
-        working-directory: services/api
         run: |
-          pnpm exec prisma generate
-          pnpm exec prisma migrate deploy
+          pnpm --filter api exec prisma generate
+          pnpm --filter api exec prisma migrate deploy
 
       - name: E2E test API (non-blocking)
-        working-directory: services/api
-        run: pnpm run test:e2e || true
+        run: pnpm --filter api run test:e2e || true
 
       - name: Build API
-        working-directory: services/api
-        run: pnpm run build
+        run: pnpm --filter api run build
 
-      - name: Install web dependencies
+      - name: Cache pnpm store (web)
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/share/pnpm/store
+          key: ${{ runner.os }}-pnpm-web-${{ hashFiles('apps/web/pnpm-lock.yaml', 'apps/web/package.json') }}
+          restore-keys: |
+            ${{ runner.os }}-pnpm-web-
+
+      - name: Install + build web
         working-directory: apps/web
-        run: pnpm install --frozen-lockfile
-
-      # Lint web optional (enable when apps/web lint is clean)
-      # - name: Lint web
-      #   working-directory: apps/web
-      #   run: pnpm run lint
-
-      - name: Build web
-        working-directory: apps/web
-        run: pnpm run build
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm run build
         env:
           NEXT_PUBLIC_API_URL: http://localhost:3001

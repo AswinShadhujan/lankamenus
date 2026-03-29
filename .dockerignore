@@ -1,0 +1,11 @@
+node_modules
+**/.pnpm
+**/dist
+.git
+.github
+.env
+.env.*
+*.log
+coverage
+.next
+out
