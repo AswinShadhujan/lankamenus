@@ -1,3 +1,4 @@
+# API image — before `pnpm install`: copy services/api/prisma + prisma.config.ts, and use --ignore-scripts (see root packageManager for pnpm version).
 FROM node:18-alpine
 
 WORKDIR /app
@@ -5,8 +6,8 @@ WORKDIR /app
 # Prisma engines + native deps (bcrypt, etc.) may need compile on Alpine
 RUN apk add --no-cache openssl libc6-compat python3 make g++
 
-# Enable pnpm
-RUN corepack enable && corepack prepare pnpm@latest --activate
+# Match root package.json "packageManager" (avoids Corepack switching pnpm mid-build)
+RUN corepack enable && corepack prepare pnpm@8.15.9 --activate
 
 # Copy workspace files
 COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./

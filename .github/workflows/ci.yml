@@ -36,6 +36,15 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Assert root Dockerfile is Docker/Railway-safe
+        run: |
+          test -f Dockerfile
+          grep -q 'COPY services/api/prisma' Dockerfile
+          grep -q 'COPY services/api/prisma.config.ts' Dockerfile
+          grep -q 'ignore-scripts' Dockerfile
+          grep -q 'pnpm rebuild' Dockerfile
+          grep -q 'prisma generate' Dockerfile
+
       - name: Install pnpm
         uses: pnpm/action-setup@v4
         with:
