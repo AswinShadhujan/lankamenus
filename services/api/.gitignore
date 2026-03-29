@@ -45,6 +45,7 @@ lerna-debug.log*
 # temp directory
 .temp
 .tmp
+_npm_lock_tmp
 
 # Runtime data
 pids

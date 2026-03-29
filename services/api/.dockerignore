@@ -1,0 +1,14 @@
+node_modules
+_npm_lock_tmp
+dist
+coverage
+.git
+.github
+.env
+.env.*
+!.env.example
+*.log
+npm-debug.log*
+test
+**/*.spec.ts
+**/*.e2e-spec.ts
