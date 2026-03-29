@@ -1,26 +1,31 @@
-# API image — pnpm workspace root (services/api only in workspace)
 FROM node:18-alpine
 
 WORKDIR /app
 
-RUN apk add --no-cache libc6-compat openssl
+RUN corepack enable && corepack prepare pnpm@latest --activate
 
-RUN corepack enable && corepack prepare pnpm@8.15.9 --activate
-
+# Copy workspace files
 COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./
-COPY services/api/package.json ./services/api/
 
+# Copy API package.json + prisma schema EARLY
+COPY services/api/package.json ./services/api/
+COPY services/api/prisma ./services/api/prisma
+COPY services/api/prisma.config.ts ./services/api/
+
+# Install deps (now prisma schema exists)
 RUN pnpm install --frozen-lockfile
 
+# Copy rest of code
 COPY . .
 
+# Generate Prisma client (safe now)
 RUN pnpm --filter api exec prisma generate
+
+# Build API
 RUN pnpm --filter api build
 
 WORKDIR /app/services/api
 
 EXPOSE 3000
-
-ENV NODE_ENV=production
 
 CMD ["node", "dist/main.js"]
