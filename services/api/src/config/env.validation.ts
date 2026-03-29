@@ -28,8 +28,6 @@ export const envValidationSchema = Joi.object({
     .min(1)
     .max(MAX_RESTAURANTS_LIST_CACHE_TTL_SECONDS)
     .optional(),
-  // CORS allowed origins (optional; comma-separated). When unset, defaults to dev origins.
-  CORS_ORIGINS: Joi.string().optional().allow(''),
   // Google Places API (optional; required only for restaurant import script)
   GOOGLE_PLACES_API_KEY: Joi.string().optional().allow(''),
   // Google OAuth (required for Google Sign-In). Web client ID for ID token audience verification.

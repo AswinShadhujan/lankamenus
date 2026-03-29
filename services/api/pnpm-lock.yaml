@@ -11,6 +11,9 @@ importers:
       '@aws-sdk/client-s3':
         specifier: ^3.1009.0
         version: 3.1009.0
+      '@nestjs/cli':
+        specifier: ^11.0.0
+        version: 11.0.10(@types/node@22.18.12)
       '@nestjs/common':
         specifier: ^11.0.1
         version: 11.1.7(class-transformer@0.5.1)(class-validator@0.14.4)(reflect-metadata@0.2.2)(rxjs@7.8.2)
@@ -77,6 +80,9 @@ importers:
       rxjs:
         specifier: ^7.8.1
         version: 7.8.2
+      typescript:
+        specifier: ^5.7.3
+        version: 5.9.3
     devDependencies:
       '@eslint/eslintrc':
         specifier: ^3.2.0
@@ -84,9 +90,6 @@ importers:
       '@eslint/js':
         specifier: ^9.18.0
         version: 9.38.0
-      '@nestjs/cli':
-        specifier: ^11.0.0
-        version: 11.0.10(@types/node@22.18.12)
       '@nestjs/schematics':
         specifier: ^11.0.0
         version: 11.0.9(chokidar@4.0.3)(typescript@5.9.3)
@@ -153,9 +156,6 @@ importers:
       tsconfig-paths:
         specifier: ^4.2.0
         version: 4.2.0
-      typescript:
-        specifier: ^5.7.3
-        version: 5.9.3
       typescript-eslint:
         specifier: ^8.20.0
         version: 8.46.2(eslint@9.38.0(jiti@2.6.1))(typescript@5.9.3)
