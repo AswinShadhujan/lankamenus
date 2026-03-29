@@ -1,4 +1,5 @@
-# Clears Prisma P3009 for failed initial migration, then reapplies migrations.
+# Clears Prisma P3009/P3018 when _prisma_migrations already exists, then migrate deploy.
+# Skip this script for a brand-new empty DB — use: pnpm run prisma:migrate only.
 # Usage (PowerShell): set DATABASE_URL to Railway Postgres, then:
 #   cd services/api
 #   .\scripts\recover-p3009.ps1

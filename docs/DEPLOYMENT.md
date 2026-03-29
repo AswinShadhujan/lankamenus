@@ -33,9 +33,9 @@ Migrations run `CREATE EXTENSION postgis` and the `restaurants.geom` column uses
 
 1. In your Railway project, add a database from the **[PostGIS template](https://railway.com/template/postgis)** (or another Postgres image that ships PostGIS).
 2. Copy the new service’s **`DATABASE_URL`** (or `POSTGRES_URL`) into your API service variables as **`DATABASE_URL`** (keep `?schema=public` if you use it).
-3. If a migration previously failed (**P3009** / **P3018**), from `services/api` with that URL set, run:
-   - `pnpm run prisma:migrate:resolve-initial-failed` (marks the failed migration as rolled back), then
-   - `pnpm run prisma:migrate` (or `pnpm run prisma:migrate:recover-from-p3009` only on a clean failed state—see script output).
+3. Apply migrations from `services/api` with **`DATABASE_URL`** set to that PostGIS database:
+   - **Brand-new empty database** (you never ran Prisma migrations on it — no `_prisma_migrations` table): run **`pnpm run prisma:migrate`** only. Do **not** run `prisma:migrate:resolve-initial-failed`; Prisma will error with *“database without migrations table”* if you try.
+   - **Database that already had a failed migration** (**P3009** / **P3018** and `_prisma_migrations` exists): run **`pnpm run prisma:migrate:resolve-initial-failed`**, then **`pnpm run prisma:migrate`** (or **`pnpm run prisma:migrate:recover-from-p3009`** once).
 
 After switching to PostGIS, redeploy the API so `preDeployCommand` can apply migrations successfully.
 
