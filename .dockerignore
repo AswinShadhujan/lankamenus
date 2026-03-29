@@ -1,11 +1,6 @@
 node_modules
-**/.pnpm
-**/dist
+.pnpm
+dist
 .git
-.github
+.gitignore
 .env
-.env.*
-*.log
-coverage
-.next
-out
