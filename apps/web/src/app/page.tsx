@@ -102,6 +102,7 @@ export default function HomePage() {
   const [favouriteIds, setFavouriteIds] = useState<Set<number>>(new Set());
   const [favouriteLoadingId, setFavouriteLoadingId] = useState<number | null>(null);
   const [hasToken, setHasToken] = useState(false);
+  const [backendHealthStatus, setBackendHealthStatus] = useState<string | null>(null);
 
   const [selectedSort, setSelectedSort] = useState<HomeSortMode>('default');
   const [filterHighRating, setFilterHighRating] = useState(false);
@@ -111,6 +112,37 @@ export default function HomePage() {
 
   useEffect(() => {
     setHasToken(!!getAdminToken());
+  }, []);
+
+  // Test backend reachability (Railway): call `${process.env.NEXT_PUBLIC_API_URL}/health`.
+  // Uses `cache: "no-store"` to avoid cached results across deployments.
+  useEffect(() => {
+    const apiBase = process.env.NEXT_PUBLIC_API_URL;
+    const healthUrl = `${process.env.NEXT_PUBLIC_API_URL}/health`;
+
+    if (!apiBase) {
+      setBackendHealthStatus('missing_api_url');
+      return;
+    }
+
+    let cancelled = false;
+    async function run() {
+      try {
+        const res = await fetch(healthUrl, { cache: 'no-store' });
+        const data = (await res.json()) as { status?: string };
+        if (cancelled) return;
+        setBackendHealthStatus(data?.status ?? `http_${res.status}`);
+      } catch {
+        if (cancelled) return;
+        setBackendHealthStatus('unreachable');
+      }
+    }
+
+    void run();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   /**
@@ -509,6 +541,17 @@ export default function HomePage() {
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-4 sm:px-6 sm:py-6">
+      <section
+        className="mb-4 rounded-xl border px-4 py-3"
+        style={{ borderColor: 'var(--border)', backgroundColor: 'color-mix(in srgb, var(--surface), transparent 12%)' }}
+      >
+        <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--text-secondary)' }}>
+          Backend status
+        </p>
+        <p className="mt-1 text-sm" style={{ color: 'var(--text-primary)' }}>
+          {backendHealthStatus ? `API: ${backendHealthStatus}` : 'Checking API...'}
+        </p>
+      </section>
       <section className={`${SECTION_MB} space-y-3`}>
         <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--text-secondary)' }}>
           {deliverSummary}
