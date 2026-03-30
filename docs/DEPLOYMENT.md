@@ -71,6 +71,17 @@ pnpm run start
 
 Set **`NEXT_PUBLIC_API_URL`** to your production API URL **before** running `pnpm run build`, so the client is built with the correct API base URL.
 
+### Railway (this monorepo)
+
+The repo root is **not** the Next.js app: `next` lives under **`apps/web`**. If Railway’s **Root Directory** is left at `/`, the build uses the root `package.json` (no `next`) and fails with *“No Next.js version detected”*.
+
+1. Create a **separate Railway service** for the web app (do not reuse the API Dockerfile service).
+2. **Settings → Root Directory:** set to **`apps/web`** (the folder that contains the web `package.json` and `pnpm-lock.yaml`).
+3. **Variables:** add **`NEXT_PUBLIC_API_URL`** = your public API URL (e.g. `https://…up.railway.app`). It must be present at **build** time.
+4. If this service still picks up the repo-root **`railway.json`** (API uses **`DOCKERFILE`**), override the web service **Builder** to **Nixpacks** in the dashboard. This repo also ships **`apps/web/railway.json`** with **`NIXPACKS`** for that layout when Railway reads config from the service root.
+
+The **`url.parse()` DEP0169** message during install usually comes from Node/tooling dependencies; it does not mean the Next.js build failed by itself.
+
 For full details on client-side API URL configuration, see [docs/API-URL-ENV.md](API-URL-ENV.md).
 
 | App | Env var | Production |
