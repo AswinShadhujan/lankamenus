@@ -3,11 +3,11 @@
 /* Design system: CSS variables for theming (see styles/theme.ts) */
 :root,
 [data-theme="light"] {
-  --background: #ffffff;
-  --surface: #f6f6f6;
-  --text-primary: #111111;
-  --text-secondary: #666666;
-  --border: #e5e5e5;
+  --background: #f8fafc;
+  --surface: #ffffff;
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --border: #d6dbe3;
   --accent-primary: #c30017;
   --accent-secondary: #ff8000;
   --danger-text: #b91c1c;
