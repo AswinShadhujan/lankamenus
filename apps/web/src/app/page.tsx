@@ -619,9 +619,12 @@ export default function HomePage() {
       </div>
 
       <section className={SECTION_MB}>
-        <div className="rounded-2xl border border-white/10 bg-neutral-950 p-4">
+        <div
+          className="rounded-2xl border p-4"
+          style={{ borderColor: 'var(--border)', backgroundColor: 'var(--surface)' }}
+        >
           <div className="mb-3 flex items-center justify-between gap-2">
-            <p className="text-xs font-semibold uppercase tracking-wide text-neutral-400">
+            <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--text-secondary)' }}>
               Categories
             </p>
             <SeeAllRestaurantsButton onClick={scrollToAllRestaurants} />

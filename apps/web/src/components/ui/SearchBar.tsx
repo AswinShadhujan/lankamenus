@@ -39,9 +39,13 @@ export function SearchBar({
   if (variant === 'premium') {
     return (
       <div
-        className={`flex min-h-[52px] w-full items-center gap-2 rounded-full border border-white/10 bg-[#111] px-4 py-3 shadow-md transition-shadow focus-within:ring-2 focus-within:ring-orange-500 focus-within:ring-offset-2 focus-within:ring-offset-[var(--background)] ${className}`}
+        className={`flex min-h-[52px] w-full items-center gap-2 rounded-full border px-4 py-3 shadow-md transition-shadow focus-within:ring-2 focus-within:ring-orange-500 focus-within:ring-offset-2 focus-within:ring-offset-[var(--background)] ${className}`}
+        style={{
+          borderColor: 'var(--border)',
+          backgroundColor: 'var(--surface)',
+        }}
       >
-        <span className="shrink-0 text-gray-400" aria-hidden>
+        <span className="shrink-0" style={{ color: 'var(--text-secondary)' }} aria-hidden>
           🔍
         </span>
         <input
@@ -54,9 +58,10 @@ export function SearchBar({
           placeholder={placeholder}
           aria-label={ariaLabel}
           suppressHydrationWarning
-          className="min-w-0 flex-1 bg-transparent text-sm text-white outline-none placeholder:text-gray-500"
+          className="min-w-0 flex-1 bg-transparent text-sm outline-none"
+          style={{ color: 'var(--text-primary)' }}
         />
-        <span className="hidden shrink-0 text-xs text-gray-400 sm:inline" aria-hidden>
+        <span className="hidden shrink-0 text-xs sm:inline" style={{ color: 'var(--text-secondary)' }} aria-hidden>
           📍 Near you
         </span>
       </div>

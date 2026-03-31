@@ -35,11 +35,14 @@ export function HomeCategoryStrip({ selected, onToggle }: HomeCategoryStripProps
               type="button"
               onClick={() => onToggle(label)}
               aria-pressed={active}
-              className={`shrink-0 rounded-full px-4 py-1.5 text-sm transition-all duration-200 ${
-                active
-                  ? 'bg-white font-medium text-black shadow-md'
-                  : 'border border-white/20 text-gray-300 hover:bg-white/10'
+              className={`shrink-0 rounded-full border px-4 py-1.5 text-sm transition-all duration-200 ${
+                active ? 'font-medium shadow-md' : ''
               }`}
+              style={{
+                borderColor: active ? 'var(--text-primary)' : 'var(--border)',
+                backgroundColor: active ? 'var(--text-primary)' : 'var(--surface)',
+                color: active ? 'var(--background)' : 'var(--text-primary)',
+              }}
             >
               <span className="mr-1.5" aria-hidden>
                 {icon}
@@ -50,7 +53,8 @@ export function HomeCategoryStrip({ selected, onToggle }: HomeCategoryStripProps
         })}
       </div>
       <div
-        className="pointer-events-none absolute right-0 top-0 h-full w-10 bg-gradient-to-l from-neutral-950 to-transparent"
+        className="pointer-events-none absolute right-0 top-0 h-full w-10"
+        style={{ background: 'linear-gradient(to left, var(--surface), transparent)' }}
         aria-hidden
       />
     </div>
