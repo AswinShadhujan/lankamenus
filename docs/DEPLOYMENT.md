@@ -39,6 +39,27 @@ Migrations run `CREATE EXTENSION postgis` and the `restaurants.geom` column uses
 
 After switching to PostGIS, redeploy the API so `preDeployCommand` can apply migrations successfully.
 
+### Prisma production runbook
+
+From `services/api`, use these commands in production order:
+
+```bash
+pnpm run prisma:migrate
+pnpm run prisma:generate
+```
+
+Optional one-time seed (for bootstrapping empty environments):
+
+```bash
+pnpm run prisma:seed
+```
+
+Notes:
+
+- `prisma:migrate` runs `prisma migrate deploy` (safe for production).
+- `prisma:generate` ensures Prisma Client matches the deployed schema.
+- `prisma:seed` inserts sample restaurant/menu/menu-item data and is idempotent for the seeded restaurant slug.
+
 ### API environment variables
 
 See `services/api/.env.example` for a template. Summary:
