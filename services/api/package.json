@@ -25,6 +25,7 @@
     "simulate:ranking:dev": "ts-node -r dotenv/config scripts/simulate-ranking-dev.ts",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate deploy",
+    "prisma:seed": "ts-node prisma/seed.ts",
     "prisma:migrate:resolve-initial-failed": "prisma migrate resolve --rolled-back \"20250329001000_initial_schema\"",
     "prisma:migrate:recover-from-p3009": "prisma migrate resolve --rolled-back \"20250329001000_initial_schema\" && prisma migrate deploy",
     "prisma:studio": "prisma studio --schema=./prisma/schema.prisma"

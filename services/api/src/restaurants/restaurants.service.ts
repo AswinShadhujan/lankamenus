@@ -248,8 +248,6 @@ export class RestaurantsService {
 
     if (locationIds.length > 0) {
       where.id = { in: locationIds };
-    } else if (hasLocation) {
-      return this.wrapSearchResult(page, pageSize, 0, []);
     }
 
     const qTrimmed = dto.q?.trim();
@@ -373,9 +371,10 @@ export class RestaurantsService {
     }
 
     const hasTextQuery = !!qTrimmed;
+    const hasEffectiveLocation = hasLocation && locationIds.length > 0;
     const sortMode = this.rankingService.resolveSortMode(
       dto,
-      hasLocation,
+      hasEffectiveLocation,
       hasTextQuery,
     );
     const orderBy = this.rankingService.getPrismaOrderBy(sortMode);
@@ -384,7 +383,7 @@ export class RestaurantsService {
     }
 
     const useGeoDistanceSort =
-      hasLocation &&
+      hasEffectiveLocation &&
       distanceById.size > 0 &&
       sortMode === 'distance';
 
@@ -394,7 +393,7 @@ export class RestaurantsService {
       !(hasLocation && distanceById.size > 0) &&
       sortMode === 'default_relevance';
 
-    const [total, rows] = await this.prisma.$transaction([
+    let [total, rows] = await this.prisma.$transaction([
       this.prisma.restaurants.count({ where }),
       useGeoDistanceSort || useMeiliRelevanceOrder
         ? this.prisma.restaurants.findMany({
@@ -410,6 +409,24 @@ export class RestaurantsService {
             select: SELECT_RESTAURANT,
           }),
     ]);
+
+    // If ranking signals are sparse and sorted result set is empty, fall back to a stable default list.
+    if (
+      total === 0 &&
+      (sortMode === 'popular' || sortMode === 'top_rated' || sortMode === 'trending')
+    ) {
+      const fallbackOrderBy = [{ created_at: 'desc' as const }, { id: 'asc' as const }];
+      [total, rows] = await this.prisma.$transaction([
+        this.prisma.restaurants.count({ where }),
+        this.prisma.restaurants.findMany({
+          where,
+          skip,
+          take,
+          orderBy: fallbackOrderBy,
+          select: SELECT_RESTAURANT,
+        }),
+      ]);
+    }
 
     type ListRow = (typeof rows)[number] & { distance_km?: number };
 

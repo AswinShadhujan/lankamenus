@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import api, { getAdminToken } from '@/lib/api';
+import api, { getAdminToken, getApiBaseUrl } from '@/lib/api';
 import { Restaurant, District, type RestaurantsListResponse } from '@/types/restaurant';
 import { RestaurantCard } from '@/components/ui/RestaurantCard';
 import { SkeletonCard } from '@/components/ui/Skeleton';
@@ -58,6 +58,19 @@ function scrollToAllRestaurants() {
 /** After URL/state updates so the #all-restaurants target is stable in layout. */
 function scheduleScrollToAllRestaurants() {
   window.setTimeout(() => scrollToAllRestaurants(), 120);
+}
+
+function buildApiUrl(path: string, params?: Record<string, string | number>): string {
+  const base = (getApiBaseUrl() || window.location.origin).replace(/\/$/, '');
+  const url = new URL(path, `${base}/`);
+  if (params) {
+    for (const [k, v] of Object.entries(params)) {
+      url.searchParams.set(k, String(v));
+    }
+  }
+  // Avoid stale CDN/browser responses for location-sensitive lists.
+  url.searchParams.set('_ts', String(Date.now()));
+  return url.toString();
 }
 
 export default function HomePage() {
@@ -224,20 +237,20 @@ export default function HomePage() {
     try {
       // All three rails MUST share the same geographic scope — only `sort` differs.
       const railResults = await Promise.allSettled([
-        api.get<RestaurantsListResponse>('/restaurants', {
-          params: { ...base, sort: 'popular' },
-        }),
-        api.get<RestaurantsListResponse>('/restaurants', {
-          params: { ...base, sort: 'top_rated' },
-        }),
-        api.get<RestaurantsListResponse>('/restaurants', {
-          params: { ...base, sort: 'trending' },
-        }),
+        fetch(buildApiUrl('/restaurants', { ...base, sort: 'popular' }), { cache: 'no-store' }).then((r) =>
+          r.json() as Promise<RestaurantsListResponse>,
+        ),
+        fetch(buildApiUrl('/restaurants', { ...base, sort: 'top_rated' }), { cache: 'no-store' }).then((r) =>
+          r.json() as Promise<RestaurantsListResponse>,
+        ),
+        fetch(buildApiUrl('/restaurants', { ...base, sort: 'trending' }), { cache: 'no-store' }).then((r) =>
+          r.json() as Promise<RestaurantsListResponse>,
+        ),
       ]);
 
       const pickData = (i: number) =>
         railResults[i].status === 'fulfilled'
-          ? railResults[i].value.data.data ?? []
+          ? railResults[i].value.data ?? []
           : [];
 
 
@@ -255,12 +268,13 @@ export default function HomePage() {
     setLoadingMore(false);
     const params = buildFeedParams();
     try {
-      const gRes = await api.get<RestaurantsListResponse>('/restaurants', {
-        params: { ...params, page: 1, limit: GRID_PAGE_SIZE },
-      });
-      const rows = gRes.data.data ?? [];
-      const total = gRes.data.total ?? 0;
-      const meta = gRes.data.meta;
+      const gRes = await fetch(
+        buildApiUrl('/restaurants', { ...params, page: 1, limit: GRID_PAGE_SIZE }),
+        { cache: 'no-store' },
+      ).then((r) => r.json() as Promise<RestaurantsListResponse>);
+      const rows = gRes.data ?? [];
+      const total = gRes.total ?? 0;
+      const meta = gRes.meta;
       setGridRestaurants(rows);
       setGridTotal(total);
       setNextGridPage(2);
@@ -293,11 +307,12 @@ export default function HomePage() {
     setLoadingMore(true);
     const params = buildFeedParams();
     try {
-      const res = await api.get<RestaurantsListResponse>('/restaurants', {
-        params: { ...params, page: nextGridPage, limit: GRID_PAGE_SIZE },
-      });
-      const rows = res.data.data ?? [];
-      const meta = res.data.meta;
+      const res = await fetch(
+        buildApiUrl('/restaurants', { ...params, page: nextGridPage, limit: GRID_PAGE_SIZE }),
+        { cache: 'no-store' },
+      ).then((r) => r.json() as Promise<RestaurantsListResponse>);
+      const rows = res.data ?? [];
+      const meta = res.meta;
       setGridRestaurants((prev) => [...prev, ...rows]);
       setNextGridPage((p) => p + 1);
       if (meta) {
@@ -324,9 +339,9 @@ export default function HomePage() {
   useIntersectionLoadMore(sentinelRef, onIntersect, scrollEnabled);
 
   useEffect(() => {
-    api
-      .get<District[]>('/districts')
-      .then((res) => setDistricts(res.data ?? []))
+    fetch(buildApiUrl('/districts'), { cache: 'no-store' })
+      .then((res) => res.json() as Promise<District[]>)
+      .then((res) => setDistricts(res ?? []))
       .catch((err) => {
         if (process.env.NODE_ENV === 'development') console.error('Failed to load districts', err);
       });
@@ -419,7 +434,7 @@ export default function HomePage() {
     scheduleScrollToAllRestaurants();
   };
 
-  /** Uber-style Nearby: set distance sort, request location only if needed; keep coords when leaving Nearby. */
+  /** Uber-style Nearby: always refresh location when toggled on, to handle city changes. */
   const onSortNearby = () => {
     if (selectedSort === 'distance') {
       setLocationError(null);
@@ -430,11 +445,6 @@ export default function HomePage() {
 
     setSelectedSort('distance');
     setLocationError(null);
-
-    if (nearMeCoords) {
-      scheduleScrollToAllRestaurants();
-      return;
-    }
 
     setLocationLoading(true);
     if (!navigator.geolocation) {

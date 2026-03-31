@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import api, { resolvePublicMediaUrl } from '@/lib/api';
+import { getApiBaseUrl, resolvePublicMediaUrl } from '@/lib/api';
 import type { DishDiscoveryItem } from '@/types/featuredDish';
 import { HorizontalScroll } from '@/components/ui/HorizontalScroll';
 import { useHasMounted } from '@/hooks/useHasMounted';
@@ -19,6 +19,18 @@ export type DishDiscoveryRailSectionProps = {
   badgeMode: 'popular' | 'trending';
   onSeeAll?: () => void;
 };
+
+function buildApiUrl(path: string, params?: Record<string, number>): string {
+  const base = (getApiBaseUrl() || window.location.origin).replace(/\/$/, '');
+  const url = new URL(path, `${base}/`);
+  if (params) {
+    for (const [k, v] of Object.entries(params)) {
+      url.searchParams.set(k, String(v));
+    }
+  }
+  url.searchParams.set('_ts', String(Date.now()));
+  return url.toString();
+}
 
 function formatPrice(price: number | null, currency: string): string | null {
   if (price == null) return null;
@@ -91,10 +103,10 @@ export function DishDiscoveryRailSection({
       params.radius_km = nearMeCoords.radius_km;
     }
 
-    api
-      .get<DishDiscoveryItem[]>(apiPath, { params })
+    fetch(buildApiUrl(apiPath, params), { cache: 'no-store' })
+      .then((res) => res.json() as Promise<DishDiscoveryItem[]>)
       .then((res) => {
-        if (!cancelled) setDishes(Array.isArray(res.data) ? res.data : []);
+        if (!cancelled) setDishes(Array.isArray(res) ? res : []);
       })
       .catch(() => {
         if (!cancelled) setDishes([]);

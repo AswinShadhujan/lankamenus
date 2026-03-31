@@ -201,11 +201,78 @@ export class DishesService {
       LIMIT 10
     `);
 
-    const mapped = rows.map((r) => this.mapRow(r));
+    let fallbackRows = rows;
+    if (fallbackRows.length === 0) {
+      // Fallback: if metrics/flags are sparse, return top dishes by restaurant rating/popularity.
+      fallbackRows = await this.prisma.$queryRaw<
+        (RawDishRow & { restaurant_popular_score: number | null })[]
+      >(Prisma.sql`
+        SELECT
+          mi.id,
+          mi.name,
+          mi.price,
+          mi.currency,
+          mi.image_url,
+          mi.is_popular,
+          mi.is_recommended,
+          COALESCE(mi.click_count, 0)::int AS click_count,
+          ms.menu_id,
+          r.id AS restaurant_id,
+          r.name_default AS restaurant_name,
+          r.rating AS restaurant_rating,
+          r.popular_score AS restaurant_popular_score
+        FROM menu_items mi
+        INNER JOIN menu_sections ms ON mi.menu_section_id = ms.id
+        INNER JOIN menus m ON ms.menu_id = m.id
+        INNER JOIN restaurants r ON m.restaurant_id = r.id
+        WHERE m.is_active = true
+          AND mi.is_available = true
+          ${geoFilter}
+        ORDER BY
+          r.rating DESC NULLS LAST,
+          r.popular_score DESC NULLS LAST,
+          mi.id ASC
+        LIMIT 10
+      `);
+    }
 
-    if (this.isDevDebug() && rows.length > 0) {
+    if (fallbackRows.length === 0 && geo != null) {
+      fallbackRows = await this.prisma.$queryRaw<
+        (RawDishRow & { restaurant_popular_score: number | null })[]
+      >(Prisma.sql`
+        SELECT
+          mi.id,
+          mi.name,
+          mi.price,
+          mi.currency,
+          mi.image_url,
+          mi.is_popular,
+          mi.is_recommended,
+          COALESCE(mi.click_count, 0)::int AS click_count,
+          ms.menu_id,
+          r.id AS restaurant_id,
+          r.name_default AS restaurant_name,
+          r.rating AS restaurant_rating,
+          r.popular_score AS restaurant_popular_score
+        FROM menu_items mi
+        INNER JOIN menu_sections ms ON mi.menu_section_id = ms.id
+        INNER JOIN menus m ON ms.menu_id = m.id
+        INNER JOIN restaurants r ON m.restaurant_id = r.id
+        WHERE m.is_active = true
+          AND mi.is_available = true
+        ORDER BY
+          r.rating DESC NULLS LAST,
+          r.popular_score DESC NULLS LAST,
+          mi.id ASC
+        LIMIT 10
+      `);
+    }
+
+    const mapped = fallbackRows.map((r) => this.mapRow(r));
+
+    if (this.isDevDebug() && fallbackRows.length > 0) {
       this.logger.debug(
-        `[popular] top → ${rows
+        `[popular] top → ${fallbackRows
           .map(
             (x) =>
               `id=${x.id} is_popular=${x.is_popular} restaurant_popular_score=${x.restaurant_popular_score ?? 'null'}`,
@@ -252,7 +319,67 @@ export class DishesService {
       LIMIT 10
     `);
 
-    const mapped = rows.map((r) => this.mapRow(r));
+    let fallbackRows = rows;
+    if (fallbackRows.length === 0) {
+      fallbackRows = await this.prisma.$queryRaw<RawDishRow[]>(Prisma.sql`
+        SELECT
+          mi.id,
+          mi.name,
+          mi.price,
+          mi.currency,
+          mi.image_url,
+          mi.is_popular,
+          mi.is_recommended,
+          COALESCE(mi.click_count, 0)::int AS click_count,
+          ms.menu_id,
+          r.id AS restaurant_id,
+          r.name_default AS restaurant_name,
+          r.rating AS restaurant_rating
+        FROM menu_items mi
+        INNER JOIN menu_sections ms ON mi.menu_section_id = ms.id
+        INNER JOIN menus m ON ms.menu_id = m.id
+        INNER JOIN restaurants r ON m.restaurant_id = r.id
+        WHERE m.is_active = true
+          AND mi.is_available = true
+          ${geoFilter}
+        ORDER BY
+          r.rating DESC NULLS LAST,
+          COALESCE(mi.click_count, 0) DESC,
+          mi.id ASC
+        LIMIT 10
+      `);
+    }
+
+    if (fallbackRows.length === 0 && geo != null) {
+      fallbackRows = await this.prisma.$queryRaw<RawDishRow[]>(Prisma.sql`
+        SELECT
+          mi.id,
+          mi.name,
+          mi.price,
+          mi.currency,
+          mi.image_url,
+          mi.is_popular,
+          mi.is_recommended,
+          COALESCE(mi.click_count, 0)::int AS click_count,
+          ms.menu_id,
+          r.id AS restaurant_id,
+          r.name_default AS restaurant_name,
+          r.rating AS restaurant_rating
+        FROM menu_items mi
+        INNER JOIN menu_sections ms ON mi.menu_section_id = ms.id
+        INNER JOIN menus m ON ms.menu_id = m.id
+        INNER JOIN restaurants r ON m.restaurant_id = r.id
+        WHERE m.is_active = true
+          AND mi.is_available = true
+        ORDER BY
+          r.rating DESC NULLS LAST,
+          COALESCE(mi.click_count, 0) DESC,
+          mi.id ASC
+        LIMIT 10
+      `);
+    }
+
+    const mapped = fallbackRows.map((r) => this.mapRow(r));
 
     if (this.isDevDebug() && mapped.length > 0) {
       this.logger.debug(
