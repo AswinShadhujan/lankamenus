@@ -6,6 +6,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { SRI_LANKA_DISTRICTS } from '../locations/data/sri-lanka-districts';
 import type { DishGeoQueryDto } from './dto/dish-geo.query.dto';
 
 /** Default radius when `lat` + `lng` are sent without `radius_km`. */
@@ -68,10 +69,9 @@ export class DishesService {
       return null;
     }
 
+    // Incomplete geo (e.g. stray query params) must not 400 — otherwise clients fall back to [] and hide rails.
     if (!latRaw || !lngRaw) {
-      throw new BadRequestException(
-        'lat and lng must be provided together for location filtering (optional: radius_km)',
-      );
+      return null;
     }
 
     const lat = parseFloat(latRaw);
@@ -93,6 +93,47 @@ export class DishesService {
     }
 
     return { lat, lng, radiusM: radiusKm * 1000 };
+  }
+
+  /** Same parsing as restaurant search: comma-separated, trimmed, de-duped. */
+  private parseDistrictList(query: DishGeoQueryDto): string[] {
+    const raw = query.district?.trim();
+    if (!raw) return [];
+    return [...new Set(raw.split(',').map((s) => s.trim()).filter(Boolean))].slice(
+      0,
+      40,
+    );
+  }
+
+  /**
+   * Match `restaurants.district` whether it stores display name ("Nuwara Eliya") or slug ("nuwara-eliya").
+   * Homepage filters use display names from GET /districts.
+   */
+  private buildDistrictFilter(names: string[]): Prisma.Sql {
+    if (names.length === 0) return Prisma.sql``;
+    const clauses: Prisma.Sql[] = [];
+    for (const raw of names) {
+      const trimmed = raw.trim();
+      if (!trimmed) continue;
+      const lower = trimmed.toLowerCase();
+      const canon = SRI_LANKA_DISTRICTS.find(
+        (d) => d.name.toLowerCase() === lower || d.id === lower,
+      );
+      if (canon) {
+        clauses.push(
+          Prisma.sql`(LOWER(TRIM(COALESCE(r.district, ''))) = LOWER(${canon.name}) OR LOWER(TRIM(COALESCE(r.district, ''))) = LOWER(${canon.id}))`,
+        );
+      } else {
+        clauses.push(
+          Prisma.sql`LOWER(TRIM(COALESCE(r.district, ''))) = LOWER(${trimmed})`,
+        );
+      }
+    }
+    if (clauses.length === 0) return Prisma.sql``;
+    if (clauses.length === 1) {
+      return Prisma.sql`AND ${clauses[0]}`;
+    }
+    return Prisma.sql`AND (${Prisma.join(clauses, ' OR ')})`;
   }
 
   private buildLocationFilter(
@@ -167,6 +208,13 @@ export class DishesService {
   async getFeatured(query: DishGeoQueryDto = {}): Promise<DishDiscoveryRow[]> {
     const geo = this.parseGeo(query);
     const geoFilter = geo != null ? this.buildLocationFilter(geo) : Prisma.sql``;
+    const districtNames = this.parseDistrictList(query);
+    const districtFilter = this.buildDistrictFilter(districtNames);
+    if (this.isDevDebug()) {
+      this.logger.log(
+        `[dish-district-debug] featured districtRaw=${query.district ?? '∅'} districtParsed=${JSON.stringify(districtNames)} hasGeo=${geo != null}`,
+      );
+    }
 
     const rows = await this.prisma.$queryRaw<
       (RawDishRow & { restaurant_popular_score: number | null })[]
@@ -193,6 +241,7 @@ export class DishesService {
         AND mi.is_available = true
         AND (mi.is_popular = true OR mi.is_recommended = true)
         ${geoFilter}
+        ${districtFilter}
       ORDER BY
         mi.is_popular DESC,
         mi.is_recommended DESC,
@@ -228,6 +277,7 @@ export class DishesService {
         WHERE m.is_active = true
           AND mi.is_available = true
           ${geoFilter}
+          ${districtFilter}
         ORDER BY
           r.rating DESC NULLS LAST,
           r.popular_score DESC NULLS LAST,
@@ -260,6 +310,7 @@ export class DishesService {
         INNER JOIN restaurants r ON m.restaurant_id = r.id
         WHERE m.is_active = true
           AND mi.is_available = true
+          ${districtFilter}
         ORDER BY
           r.rating DESC NULLS LAST,
           r.popular_score DESC NULLS LAST,
@@ -290,6 +341,13 @@ export class DishesService {
   async getTrending(query: DishGeoQueryDto = {}): Promise<DishDiscoveryRow[]> {
     const geo = this.parseGeo(query);
     const geoFilter = geo != null ? this.buildLocationFilter(geo) : Prisma.sql``;
+    const districtNames = this.parseDistrictList(query);
+    const districtFilter = this.buildDistrictFilter(districtNames);
+    if (this.isDevDebug()) {
+      this.logger.log(
+        `[dish-district-debug] trending districtRaw=${query.district ?? '∅'} districtParsed=${JSON.stringify(districtNames)} hasGeo=${geo != null}`,
+      );
+    }
 
     const rows = await this.prisma.$queryRaw<RawDishRow[]>(Prisma.sql`
       SELECT
@@ -312,6 +370,7 @@ export class DishesService {
       WHERE m.is_active = true
         AND mi.is_available = true
         ${geoFilter}
+        ${districtFilter}
       ORDER BY
         COALESCE(mi.click_count, 0) DESC,
         mi.updated_at DESC,
@@ -342,6 +401,7 @@ export class DishesService {
         WHERE m.is_active = true
           AND mi.is_available = true
           ${geoFilter}
+          ${districtFilter}
         ORDER BY
           r.rating DESC NULLS LAST,
           COALESCE(mi.click_count, 0) DESC,
@@ -371,6 +431,7 @@ export class DishesService {
         INNER JOIN restaurants r ON m.restaurant_id = r.id
         WHERE m.is_active = true
           AND mi.is_available = true
+          ${districtFilter}
         ORDER BY
           r.rating DESC NULLS LAST,
           COALESCE(mi.click_count, 0) DESC,

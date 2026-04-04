@@ -23,8 +23,23 @@ import {
   serializeCategoriesQuery,
 } from '@/lib/foodCategories';
 import { useHasMounted } from '@/hooks/useHasMounted';
+import {
+  FRESH_GEO_OPTIONS,
+  clearStoredNearbyGeoMeta,
+  geolocationFailureMessage,
+  persistNearbyGeoMetaAfterSuccess,
+} from '@/lib/geolocationFresh';
+import {
+  MAX_BROWSER_ACCURACY_METERS,
+  browserPositionToNearbyState,
+  isBrowserGeolocationAccurateEnough,
+  type NearbySessionGeoState,
+} from '@/lib/nearbyBrowserGeo';
 
 const DEFAULT_RADIUS_KM = 10;
+
+const NEARBY_UNSUPPORTED_MESSAGE =
+  'This browser does not support location. Use District to narrow results.';
 const RATING_THRESHOLD = 4.5;
 const GRID_PAGE_SIZE = 12;
 const RAIL_PAGE_SIZE = 16;
@@ -33,8 +48,6 @@ const SECTION_MB = 'mb-8';
 const GAP_EL = 'gap-3';
 /** Matches All Restaurants grid + skeleton grid (no layout shift). */
 const ALL_RESTAURANTS_GRID = `grid grid-cols-1 items-stretch sm:grid-cols-2 sm:gap-4 lg:grid-cols-3 ${GAP_EL}`;
-
-const NEARBY_LOCATION_MESSAGE = 'Location permission needed for Nearby';
 
 type HomeSortMode = 'default' | 'popular' | 'top_rated' | 'trending' | 'distance';
 
@@ -104,11 +117,8 @@ export default function HomePage() {
 
   const [districts, setDistricts] = useState<District[]>([]);
   const [selectedDistricts, setSelectedDistricts] = useState<string[]>([]);
-  const [nearMeCoords, setNearMeCoords] = useState<{
-    lat: number;
-    lng: number;
-    radius_km: number;
-  } | null>(null);
+  /** Nearby: browser geolocation when accurate enough. */
+  const [nearbySessionGeo, setNearbySessionGeo] = useState<NearbySessionGeoState | null>(null);
   const [locationError, setLocationError] = useState<string | null>(null);
   const [locationLoading, setLocationLoading] = useState(false);
   const [fetchError, setFetchError] = useState<string | null>(null);
@@ -127,11 +137,11 @@ export default function HomePage() {
     setHasToken(!!getAdminToken());
   }, []);
 
-  // Test backend reachability (Railway): call `${process.env.NEXT_PUBLIC_API_URL}/health`.
+  // Test backend reachability: same base as fetch() (env or localhost :3001 fallback).
   // Uses `cache: "no-store"` to avoid cached results across deployments.
   useEffect(() => {
-    const apiBase = process.env.NEXT_PUBLIC_API_URL;
-    const healthUrl = `${process.env.NEXT_PUBLIC_API_URL}/health`;
+    const apiBase = getApiBaseUrl().replace(/\/$/, '');
+    const healthUrl = `${apiBase}/health`;
 
     if (!apiBase) {
       setBackendHealthStatus('missing_api_url');
@@ -158,37 +168,41 @@ export default function HomePage() {
     };
   }, []);
 
-  /**
-   * Initial rail locality: try geolocation once on mount (does not use locationLoading — that’s for Nearby UX).
-   * On success → nearMeCoords (rails + future Nearby). On failure → buildRailParams falls back to district or national.
-   */
+  /** Discovery rails do not wait on geolocation — geo query params are only sent while Nearby sort is active with a session fix. */
   useEffect(() => {
-    let cancelled = false;
-
-    if (!navigator.geolocation) {
-      setRailGeoResolved(true);
-      return;
-    }
-
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        if (cancelled) return;
-        const lat = position.coords.latitude;
-        const lng = position.coords.longitude;
-        setNearMeCoords({ lat, lng, radius_km: DEFAULT_RADIUS_KM });
-        setRailGeoResolved(true);
-      },
-      () => {
-        if (cancelled) return;
-        setRailGeoResolved(true);
-      },
-      { enableHighAccuracy: true, timeout: 12000, maximumAge: 600_000 },
-    );
-
-    return () => {
-      cancelled = true;
-    };
+    setRailGeoResolved(true);
   }, []);
+
+  /** Leaving Nearby clears session geo. */
+  useEffect(() => {
+    if (selectedSort !== 'distance') {
+      setNearbySessionGeo(null);
+    }
+  }, [selectedSort]);
+
+  const geoCoordsForNearbyRequests =
+    selectedSort === 'distance' && nearbySessionGeo
+      ? {
+          lat: nearbySessionGeo.lat,
+          lng: nearbySessionGeo.lng,
+          radius_km: nearbySessionGeo.radius_km,
+        }
+      : null;
+
+  /** Same location scope as `buildRailParams`: geo for Nearby, else optional district CSV. */
+  const dishDistrictCsv = useMemo(() => {
+    if (selectedSort === 'distance' && nearbySessionGeo) return null;
+    if (selectedDistricts.length === 0) return null;
+    return selectedDistricts.join(',');
+  }, [selectedSort, nearbySessionGeo, selectedDistricts]);
+
+  const dishDistrictIdsForDebug = useMemo(() => {
+    if (process.env.NODE_ENV !== 'development') return undefined;
+    if (selectedSort === 'distance' && nearbySessionGeo) return [];
+    return selectedDistricts
+      .map((n) => districts.find((d) => d.name === n)?.id)
+      .filter((id): id is string => id !== undefined);
+  }, [selectedSort, nearbySessionGeo, selectedDistricts, districts]);
 
   /** All Restaurants only — never used for discovery rails. */
   const buildFeedParams = useCallback(() => {
@@ -198,10 +212,10 @@ export default function HomePage() {
     if (selectedDistricts.length > 0) params.district = selectedDistricts.join(',');
     if (selectedCategories.length > 0) params.cuisine = selectedCategories.join(',');
 
-    if (selectedSort === 'distance' && nearMeCoords) {
-      params.lat = nearMeCoords.lat;
-      params.lng = nearMeCoords.lng;
-      params.radius_km = nearMeCoords.radius_km;
+    if (selectedSort === 'distance' && nearbySessionGeo) {
+      params.lat = nearbySessionGeo.lat;
+      params.lng = nearbySessionGeo.lng;
+      params.radius_km = nearbySessionGeo.radius_km;
       params.sort = 'distance';
     } else if (selectedSort === 'popular') {
       params.sort = 'popular';
@@ -212,26 +226,34 @@ export default function HomePage() {
     }
 
     return params;
-  }, [urlQuery, selectedDistricts, selectedCategories, selectedSort, nearMeCoords]);
+  }, [urlQuery, selectedDistricts, selectedCategories, selectedSort, nearbySessionGeo]);
 
   /**
-   * Discovery rails only: page, limit, and either lat/lng (+ radius) OR district fallback.
-   * No q, cuisine, or feed sort — each rail request adds only its own API `sort`.
+   * Discovery rails: lat/lng only when Nearby sort is on and we have a session fix from that flow.
+   * Otherwise district filter or national (no automatic mount geolocation — avoids wrong coarse fixes).
    */
   const buildRailParams = useCallback((): Record<string, string | number> => {
     const params: Record<string, string | number> = { page: 1, limit: RAIL_PAGE_SIZE };
-    if (nearMeCoords) {
-      params.lat = nearMeCoords.lat;
-      params.lng = nearMeCoords.lng;
-      params.radius_km = nearMeCoords.radius_km;
+    if (selectedSort === 'distance' && nearbySessionGeo) {
+      params.lat = nearbySessionGeo.lat;
+      params.lng = nearbySessionGeo.lng;
+      params.radius_km = nearbySessionGeo.radius_km;
     } else if (selectedDistricts.length > 0) {
       params.district = selectedDistricts.join(',');
     }
 
     return params;
-  }, [nearMeCoords, selectedDistricts]);
+  }, [selectedSort, nearbySessionGeo, selectedDistricts]);
+
+  /** Nearby sort: waiting for a fresh GPS read — do not call APIs with stale or missing coords. */
+  const awaitingFreshNearbyCoords =
+    selectedSort === 'distance' && locationLoading && !nearbySessionGeo;
 
   const loadRails = useCallback(async () => {
+    if (awaitingFreshNearbyCoords) {
+      setRailsLoading(true);
+      return;
+    }
     setRailsLoading(true);
     const base = buildRailParams();
     try {
@@ -260,18 +282,32 @@ export default function HomePage() {
     } finally {
       setRailsLoading(false);
     }
-  }, [buildRailParams]);
+  }, [awaitingFreshNearbyCoords, buildRailParams]);
 
   const loadFeed = useCallback(async () => {
-    setFeedLoading(true);
     setFetchError(null);
     setLoadingMore(false);
+
+    if (selectedSort === 'distance' && !nearbySessionGeo && locationLoading) {
+      setFeedLoading(true);
+      return;
+    }
+
+    if (selectedSort === 'distance' && !nearbySessionGeo) {
+      setFeedLoading(false);
+      setGridRestaurants([]);
+      setGridTotal(0);
+      setHasMore(false);
+      return;
+    }
+
+    setFeedLoading(true);
     const params = buildFeedParams();
+    const listUrl = buildApiUrl('/restaurants', { ...params, page: 1, limit: GRID_PAGE_SIZE });
     try {
-      const gRes = await fetch(
-        buildApiUrl('/restaurants', { ...params, page: 1, limit: GRID_PAGE_SIZE }),
-        { cache: 'no-store' },
-      ).then((r) => r.json() as Promise<RestaurantsListResponse>);
+      const gRes = await fetch(listUrl, { cache: 'no-store' }).then(
+        (r) => r.json() as Promise<RestaurantsListResponse>,
+      );
       const rows = gRes.data ?? [];
       const total = gRes.total ?? 0;
       const meta = gRes.meta;
@@ -289,14 +325,22 @@ export default function HomePage() {
     } finally {
       setFeedLoading(false);
     }
-  }, [buildFeedParams, feedRetryNonce]);
+  }, [buildFeedParams, feedRetryNonce, selectedSort, nearbySessionGeo, locationLoading]);
 
   // Rails: wait for initial geolocation attempt, then fetch with buildRailParams() (coords → else district → else national).
   useEffect(() => {
     if (!railGeoResolved) return;
     void loadRails();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [railGeoResolved, nearMeCoords?.lat, nearMeCoords?.lng, selectedDistricts.join(',')]);
+  }, [
+    railGeoResolved,
+    nearbySessionGeo?.lat,
+    nearbySessionGeo?.lng,
+    selectedDistricts.join(','),
+    selectedSort,
+    locationLoading,
+    awaitingFreshNearbyCoords,
+  ]);
 
   useEffect(() => {
     void loadFeed();
@@ -304,13 +348,14 @@ export default function HomePage() {
 
   const loadMore = useCallback(async () => {
     if (!hasMore || loadingMore || feedLoading || fetchError) return;
+    if (selectedSort === 'distance' && !nearbySessionGeo) return;
     setLoadingMore(true);
     const params = buildFeedParams();
+    const moreUrl = buildApiUrl('/restaurants', { ...params, page: nextGridPage, limit: GRID_PAGE_SIZE });
     try {
-      const res = await fetch(
-        buildApiUrl('/restaurants', { ...params, page: nextGridPage, limit: GRID_PAGE_SIZE }),
-        { cache: 'no-store' },
-      ).then((r) => r.json() as Promise<RestaurantsListResponse>);
+      const res = await fetch(moreUrl, { cache: 'no-store' }).then(
+        (r) => r.json() as Promise<RestaurantsListResponse>,
+      );
       const rows = res.data ?? [];
       const meta = res.meta;
       setGridRestaurants((prev) => [...prev, ...rows]);
@@ -326,7 +371,7 @@ export default function HomePage() {
     } finally {
       setLoadingMore(false);
     }
-  }, [hasMore, loadingMore, feedLoading, fetchError, nextGridPage, buildFeedParams]);
+  }, [hasMore, loadingMore, feedLoading, fetchError, nextGridPage, buildFeedParams, selectedSort, nearbySessionGeo]);
 
   loadMoreRef.current = loadMore;
 
@@ -434,23 +479,27 @@ export default function HomePage() {
     scheduleScrollToAllRestaurants();
   };
 
-  /** Uber-style Nearby: always refresh location when toggled on, to handle city changes. */
+  /** Nearby: browser geolocation only. On failure or low accuracy, exit Nearby and show a clear error (use District to browse). */
   const onSortNearby = () => {
     if (selectedSort === 'distance') {
       setLocationError(null);
+      setLocationLoading(false);
+      clearStoredNearbyGeoMeta();
       setSelectedSort('default');
       scheduleScrollToAllRestaurants();
       return;
     }
 
-    setSelectedSort('distance');
     setLocationError(null);
-
+    clearStoredNearbyGeoMeta();
+    setNearbySessionGeo(null);
+    setSelectedSort('distance');
     setLocationLoading(true);
+
     if (!navigator.geolocation) {
-      setLocationError(NEARBY_LOCATION_MESSAGE);
+      setLocationError(NEARBY_UNSUPPORTED_MESSAGE);
       setLocationLoading(false);
-      setSelectedSort((s) => (s === 'distance' ? 'default' : s));
+      setSelectedSort('default');
       return;
     }
 
@@ -458,17 +507,39 @@ export default function HomePage() {
       (position) => {
         const lat = position.coords.latitude;
         const lng = position.coords.longitude;
-        setNearMeCoords({ lat, lng, radius_km: DEFAULT_RADIUS_KM });
+        const acc = position.coords.accuracy;
+
+        if (isBrowserGeolocationAccurateEnough(acc)) {
+          setNearbySessionGeo(
+            browserPositionToNearbyState(lat, lng, DEFAULT_RADIUS_KM, acc as number),
+          );
+          persistNearbyGeoMetaAfterSuccess({
+            lat,
+            lng,
+            radius_km: DEFAULT_RADIUS_KM,
+            positionTimestamp: position.timestamp,
+          });
+          setLocationError(null);
+        } else {
+          const accLabel =
+            acc != null && Number.isFinite(acc) ? `~${Math.round(acc)} m` : 'unknown';
+          setLocationError(
+            `Location accuracy is too low for Nearby (${accLabel}; need about ${MAX_BROWSER_ACCURACY_METERS} m or better). Use District below to browse, or try again with a clearer GPS signal.`,
+          );
+          setSelectedSort('default');
+          setNearbySessionGeo(null);
+        }
         setLocationLoading(false);
-        setLocationError(null);
         scheduleScrollToAllRestaurants();
       },
-      () => {
-        setLocationError(NEARBY_LOCATION_MESSAGE);
+      (err) => {
+        setLocationError(geolocationFailureMessage(err));
         setLocationLoading(false);
-        setSelectedSort((s) => (s === 'distance' ? 'default' : s));
+        setSelectedSort('default');
+        setNearbySessionGeo(null);
+        scheduleScrollToAllRestaurants();
       },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 },
+      FRESH_GEO_OPTIONS,
     );
   };
 
@@ -515,17 +586,18 @@ export default function HomePage() {
 
   const displayRestaurants = ratingFilteredGrid;
 
-  const deliverSummary = useMemo(() => {
-    if (nearMeCoords) return `Near you · ${nearMeCoords.radius_km} km`;
-    if (selectedDistricts.length === 0) return 'Sri Lanka';
+  const districtScopeLabel = useMemo(() => {
+    if (selectedDistricts.length === 0) return 'All Districts';
     if (selectedDistricts.length === 1) return selectedDistricts[0];
     return `${selectedDistricts.length} districts`;
-  }, [nearMeCoords, selectedDistricts]);
+  }, [selectedDistricts]);
 
-  const railLocationLabel = useMemo(
-    () => getLocationLabel(nearMeCoords, selectedDistricts),
-    [nearMeCoords, selectedDistricts],
-  );
+  const railLocationLabel = useMemo(() => {
+    if (selectedSort === 'distance' && nearbySessionGeo) {
+      return '📍 Nearby (device location)';
+    }
+    return getLocationLabel(geoCoordsForNearbyRequests, selectedDistricts);
+  }, [selectedSort, nearbySessionGeo, geoCoordsForNearbyRequests, selectedDistricts]);
 
   const emptyDescription =
     filterHighRating
@@ -562,24 +634,43 @@ export default function HomePage() {
           {backendHealthStatus ? `API: ${backendHealthStatus}` : 'Checking API...'}
         </p>
       </section>
-      <section className={`${SECTION_MB} space-y-3`}>
-        <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--text-secondary)' }}>
-          {deliverSummary}
-        </p>
-
-        <UberEatsPillRow
-          title="District"
-          trailingAction={<SeeAllRestaurantsButton onClick={scrollToAllRestaurants} />}
+      <section className={SECTION_MB}>
+        <div
+          className="rounded-2xl border p-4 sm:p-5"
+          style={{ borderColor: 'var(--border)', backgroundColor: 'var(--surface)' }}
         >
-          {districts.map((d) => (
+          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="min-w-0 flex-1">
+              <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--text-secondary)' }}>
+                District
+              </p>
+              <p className="mt-1 text-base font-semibold sm:text-lg" style={{ color: 'var(--text-primary)' }}>
+                {districtScopeLabel}
+              </p>
+              <p className="mt-1 max-w-xl text-xs leading-relaxed sm:text-sm" style={{ color: 'var(--text-secondary)' }}>
+                Primary location for browsing. Applies to the discovery rails and the All Restaurants list.
+              </p>
+            </div>
+            <div className="shrink-0 sm:pt-0.5">
+              <SeeAllRestaurantsButton onClick={scrollToAllRestaurants} />
+            </div>
+          </div>
+          <div className="flex gap-2 overflow-x-auto scroll-smooth pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             <UberEatsPill
-              key={d.id}
-              label={d.name}
-              selected={selectedDistricts.includes(d.name)}
-              onClick={() => toggleDistrict(d.name)}
+              label="All Districts"
+              selected={selectedDistricts.length === 0}
+              onClick={() => setSelectedDistricts([])}
             />
-          ))}
-        </UberEatsPillRow>
+            {districts.map((d) => (
+              <UberEatsPill
+                key={d.id}
+                label={d.name}
+                selected={selectedDistricts.includes(d.name)}
+                onClick={() => toggleDistrict(d.name)}
+              />
+            ))}
+          </div>
+        </div>
       </section>
 
       <div
@@ -617,14 +708,24 @@ export default function HomePage() {
           />
         </UberEatsPillRow>
         {locationError && (
-          <p className="mt-3 rounded-lg border px-3 py-2 text-sm" role="status" style={{ borderColor: 'var(--border)', color: 'var(--text-secondary)' }}>
+          <p className="mt-3 rounded-lg border px-3 py-2 text-sm" role="alert" style={{ borderColor: 'var(--border)', color: 'var(--text-primary)' }}>
             {locationError}
           </p>
         )}
-        {selectedSort === 'distance' && nearMeCoords && (
-          <p className="mt-3 text-xs" style={{ color: 'var(--text-secondary)' }}>
-            Main feed sorted by distance within {nearMeCoords.radius_km} km.
+        {selectedSort === 'distance' && locationLoading && !nearbySessionGeo && (
+          <p className="mt-3 text-xs" style={{ color: 'var(--text-secondary)' }} role="status">
+            Getting your location for Nearby…
           </p>
+        )}
+        {selectedSort === 'distance' && nearbySessionGeo && (
+          <div className="mt-3">
+            <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
+              Showing results for your current location · {nearbySessionGeo.radius_km} km
+            </p>
+            <p className="mt-0.5 text-xs" style={{ color: 'var(--text-secondary)' }}>
+              Same coordinates for the list, dish rails, and restaurant rails.
+            </p>
+          </div>
         )}
       </div>
 
@@ -656,13 +757,19 @@ export default function HomePage() {
       >
         <PopularDishesSection
           geoResolved={railGeoResolved}
-          nearMeCoords={nearMeCoords}
+          nearMeCoords={geoCoordsForNearbyRequests}
+          districtCsv={dishDistrictCsv}
+          districtIdsForDebug={dishDistrictIdsForDebug}
+          deferGeoFetch={awaitingFreshNearbyCoords}
           locationLabel={railLocationLabel}
           onSeeAll={scrollToAllRestaurants}
         />
         <TrendingDishesSection
           geoResolved={railGeoResolved}
-          nearMeCoords={nearMeCoords}
+          nearMeCoords={geoCoordsForNearbyRequests}
+          districtCsv={dishDistrictCsv}
+          districtIdsForDebug={dishDistrictIdsForDebug}
+          deferGeoFetch={awaitingFreshNearbyCoords}
           locationLabel={railLocationLabel}
           onSeeAll={scrollToAllRestaurants}
         />

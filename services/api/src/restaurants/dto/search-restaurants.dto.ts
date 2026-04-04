@@ -13,6 +13,12 @@ function firstQueryString(value: unknown): string | undefined {
 }
 
 export class SearchRestaurantsDto {
+  /** Client cache-buster; ignored (allowed so forbidNonWhitelisted does not 400). */
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  _ts?: string;
+
   /** Latitude for "near me" search (use with lng and radius_km). */
   @IsOptional()
   @IsString()

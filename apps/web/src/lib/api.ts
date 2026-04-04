@@ -3,9 +3,28 @@ import axios from 'axios';
 /** Public API base URL (set in Vercel as NEXT_PUBLIC_API_URL). */
 export const API_URL = process.env.NEXT_PUBLIC_API_URL?.trim() || '';
 
+function isLocalBrowserHost(hostname: string): boolean {
+  return (
+    hostname === 'localhost' ||
+    hostname === '127.0.0.1' ||
+    hostname === '[::1]' ||
+    hostname === '::1'
+  );
+}
+
+/**
+ * When env is unset, assume API on :3001 during local browser dev (Next on any localhost port).
+ * Production hostnames never match → keep using NEXT_PUBLIC_API_URL only.
+ */
+function browserLocalApiFallback(): string {
+  if (typeof window === 'undefined') return '';
+  if (!isLocalBrowserHost(window.location.hostname)) return '';
+  return 'http://localhost:3001';
+}
+
 /** Base URL of the API (for building image URLs etc.). */
 export function getApiBaseUrl(): string {
-  return API_URL;
+  return API_URL || browserLocalApiFallback();
 }
 
 /**
@@ -17,19 +36,24 @@ export function resolvePublicMediaUrl(url: string | null | undefined): string {
   if (!t) return '';
   if (/^https?:\/\//i.test(t)) return t;
   if (t.startsWith('//')) return `https:${t}`;
-  if (t.startsWith('/') && API_URL) {
-    return `${API_URL.replace(/\/$/, '')}${t}`;
+  const base = getApiBaseUrl();
+  if (t.startsWith('/') && base) {
+    return `${base.replace(/\/$/, '')}${t}`;
   }
   return t;
 }
 
 const api = axios.create({
-  baseURL: API_URL,
+  baseURL: API_URL || undefined,
   timeout: 15000, // 15s so the app doesn't hang if the API is unreachable
 });
 
 // Attach JWT when present (used for both admin and end-user auth)
 api.interceptors.request.use((config) => {
+  const base = getApiBaseUrl();
+  if (base) {
+    config.baseURL = base.replace(/\/$/, '');
+  }
   if (typeof window !== 'undefined') {
     const token = localStorage.getItem('adminToken');
     if (token) {

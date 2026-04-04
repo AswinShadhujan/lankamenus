@@ -15,12 +15,20 @@ export type DishDiscoveryRailSectionProps = {
   apiPath: '/dishes/featured' | '/dishes/trending';
   geoResolved: boolean;
   nearMeCoords: { lat: number; lng: number; radius_km: number } | null;
+  /**
+   * Comma-separated district names when not using `nearMeCoords` — same `district` query as GET /restaurants.
+   */
+  districtCsv?: string | null;
+  /** Dev-only: resolved district ids for logging (homepage maps names → ids). */
+  districtIdsForDebug?: string[];
+  /** True while Nearby is fetching a fresh fix — do not call dish APIs with stale/missing coords. */
+  deferGeoFetch?: boolean;
   locationLabel?: string | null;
   badgeMode: 'popular' | 'trending';
   onSeeAll?: () => void;
 };
 
-function buildApiUrl(path: string, params?: Record<string, number>): string {
+function buildApiUrl(path: string, params?: Record<string, string | number>): string {
   const base = (getApiBaseUrl() || window.location.origin).replace(/\/$/, '');
   const url = new URL(path, `${base}/`);
   if (params) {
@@ -83,6 +91,9 @@ export function DishDiscoveryRailSection({
   apiPath,
   geoResolved,
   nearMeCoords,
+  districtCsv = null,
+  districtIdsForDebug,
+  deferGeoFetch = false,
   locationLabel = null,
   badgeMode,
   onSeeAll,
@@ -93,20 +104,46 @@ export function DishDiscoveryRailSection({
 
   useEffect(() => {
     if (!hasMounted || !geoResolved) return;
+    if (deferGeoFetch) {
+      setLoading(true);
+      return;
+    }
     let cancelled = false;
     setLoading(true);
 
-    const params: Record<string, number> = {};
+    const params: Record<string, string | number> = {};
     if (nearMeCoords) {
       params.lat = nearMeCoords.lat;
       params.lng = nearMeCoords.lng;
       params.radius_km = nearMeCoords.radius_km;
+    } else if (districtCsv && districtCsv.trim() !== '') {
+      params.district = districtCsv;
     }
 
-    fetch(buildApiUrl(apiPath, params), { cache: 'no-store' })
-      .then((res) => res.json() as Promise<DishDiscoveryItem[]>)
+    const dishUrl = buildApiUrl(apiPath, params);
+
+    if (process.env.NODE_ENV === 'development') {
+      // Temporary: trace dish scope vs homepage district selection.
+      console.log('[lm:dish-district-debug]', apiPath, {
+        districtNames: districtCsv ?? null,
+        districtIds: districtIdsForDebug ?? [],
+        finalUrl: dishUrl,
+      });
+    }
+
+    fetch(dishUrl, { cache: 'no-store' })
+      .then(async (res) => {
+        const data: unknown = await res.json().catch(() => null);
+        if (!Array.isArray(data)) {
+          if (process.env.NODE_ENV === 'development') {
+            console.warn('[DishDiscoveryRail]', apiPath, 'not array', res.status, data);
+          }
+          return [];
+        }
+        return data as DishDiscoveryItem[];
+      })
       .then((res) => {
-        if (!cancelled) setDishes(Array.isArray(res) ? res : []);
+        if (!cancelled) setDishes(res);
       })
       .catch(() => {
         if (!cancelled) setDishes([]);
@@ -121,6 +158,8 @@ export function DishDiscoveryRailSection({
     apiPath,
     hasMounted,
     geoResolved,
+    deferGeoFetch,
+    districtCsv,
     nearMeCoords?.lat,
     nearMeCoords?.lng,
     nearMeCoords?.radius_km,
@@ -130,8 +169,29 @@ export function DishDiscoveryRailSection({
     return null;
   }
 
+  const hasLocationScope =
+    (districtCsv != null && districtCsv.trim() !== '') || nearMeCoords != null;
+
   if (!loading && (!dishes || dishes.length === 0)) {
-    return null;
+    if (!hasLocationScope) {
+      return null;
+    }
+    const emptyCopy = nearMeCoords
+      ? 'No dishes in this area yet. Try a different location or browse by district.'
+      : 'No dishes in the selected district yet. Try All Districts or pick another district.';
+    return (
+      <section className="scroll-mt-4">
+        <HomeSectionHeader
+          title={title}
+          subtitle={sectionSubtitle}
+          meta={locationLabel}
+          onSeeAll={onSeeAll}
+        />
+        <p className="mt-2 max-w-xl text-sm leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
+          {emptyCopy}
+        </p>
+      </section>
+    );
   }
 
   const imageBadge = badgeMode === 'popular' ? <PopularImageBadge /> : <TrendingImageBadge />;

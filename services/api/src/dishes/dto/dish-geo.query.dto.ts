@@ -5,6 +5,12 @@ import { IsOptional, IsString, MaxLength } from 'class-validator';
  * Same semantics as restaurant list nearby search.
  */
 export class DishGeoQueryDto {
+  /** Client cache-buster; ignored. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(32)
+  _ts?: string;
+
   @IsOptional()
   @IsString()
   @MaxLength(20)
@@ -20,4 +26,10 @@ export class DishGeoQueryDto {
   @IsString()
   @MaxLength(20)
   radius_km?: string;
+
+  /** Comma-separated restaurant district names (same as GET /restaurants). */
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  district?: string;
 }
