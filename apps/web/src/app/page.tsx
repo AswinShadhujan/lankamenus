@@ -29,6 +29,7 @@ import {
 } from '@/lib/geolocationFresh';
 import {
   isLocationResolved,
+  MAX_ACCEPTABLE_ACCURACY_METERS,
   runInitialGeolocation,
   type UserLocationState,
 } from '@/lib/homeUserLocation';
@@ -560,6 +561,12 @@ export default function HomePage() {
       );
       return;
     }
+    if (userLocation.status === 'low_accuracy') {
+      setLocationError(
+        'Location is not accurate enough to show nearby results. Try a device with GPS, or browse by district.',
+      );
+      return;
+    }
 
     if (!navigator.geolocation) {
       setLocationError(NEARBY_UNSUPPORTED_MESSAGE);
@@ -760,6 +767,18 @@ export default function HomePage() {
           <p className="mt-2 text-xs leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
             Using your location for rankings across Sri Lanka. Nearby turns on strict distance filtering within a
             set radius.
+          </p>
+        )}
+        {userLocation.status === 'low_accuracy' && selectedSort !== 'distance' && (
+          <p className="mt-2 text-xs leading-relaxed" style={{ color: 'var(--text-secondary)' }} role="status">
+            Location accuracy is low — showing all results. Nearby needs a more precise fix (about{' '}
+            {MAX_ACCEPTABLE_ACCURACY_METERS / 1000} km or better).
+            {userLocation.accuracyM >= 0 && (
+              <>
+                {' '}
+                Last reading: ~{Math.round(userLocation.accuracyM)} m.
+              </>
+            )}
           </p>
         )}
         {(userLocation.status === 'denied' || userLocation.status === 'unsupported') &&
