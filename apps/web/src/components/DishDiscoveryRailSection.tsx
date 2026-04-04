@@ -21,8 +21,6 @@ export type DishDiscoveryRailSectionProps = {
   biasCoords: { lat: number; lng: number } | null;
   /** Comma-separated district names (same as GET /restaurants). */
   districtCsv?: string | null;
-  /** True while Nearby is resolving a fresh fix — do not call with incomplete strict params. */
-  deferUntilNearbyReady?: boolean;
   locationLabel?: string | null;
   badgeMode: 'popular' | 'trending';
   onSeeAll?: () => void;
@@ -95,7 +93,6 @@ export function DishDiscoveryRailSection({
   strictNearbyCoords,
   biasCoords,
   districtCsv = null,
-  deferUntilNearbyReady = false,
   locationLabel = null,
   badgeMode,
   onSeeAll,
@@ -106,10 +103,6 @@ export function DishDiscoveryRailSection({
 
   useEffect(() => {
     if (!hasMounted || !locationReady) return;
-    if (deferUntilNearbyReady) {
-      setLoading(true);
-      return;
-    }
     let cancelled = false;
     setLoading(true);
 
@@ -155,7 +148,6 @@ export function DishDiscoveryRailSection({
     apiPath,
     hasMounted,
     locationReady,
-    deferUntilNearbyReady,
     districtCsv,
     strictNearbyCoords?.lat,
     strictNearbyCoords?.lng,
