@@ -16,25 +16,29 @@ describe('RankingService', () => {
   describe('resolveSortMode', () => {
     it('maps top_rated and rating alias', () => {
       expect(
-        service.resolveSortMode({ sort: 'top_rated' } as never, false, false),
+        service.resolveSortMode({ sort: 'top_rated' } as never, false, false, false),
       ).toBe('top_rated');
       expect(
-        service.resolveSortMode({ sort: 'rating' } as never, false, false),
+        service.resolveSortMode({ sort: 'rating' } as never, false, false, false),
       ).toBe('top_rated');
     });
 
     it('defaults to created_at when no location and no query', () => {
-      expect(service.resolveSortMode({} as never, false, false)).toBe(
+      expect(service.resolveSortMode({} as never, false, false, false)).toBe(
         'default_created',
       );
     });
 
-    it('defaults to distance when location and no sort', () => {
-      expect(service.resolveSortMode({} as never, true, false)).toBe('distance');
+    it('defaults to distance when strict geo effective and no sort', () => {
+      expect(service.resolveSortMode({} as never, true, false, false)).toBe('distance');
+    });
+
+    it('defaults to distance when bias geo (lat/lng only) and no sort', () => {
+      expect(service.resolveSortMode({} as never, false, true, false)).toBe('distance');
     });
 
     it('uses relevance when text query and no sort (no location)', () => {
-      expect(service.resolveSortMode({} as never, false, true)).toBe(
+      expect(service.resolveSortMode({} as never, false, false, true)).toBe(
         'default_relevance',
       );
     });

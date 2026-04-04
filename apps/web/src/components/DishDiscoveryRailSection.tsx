@@ -13,16 +13,16 @@ export type DishDiscoveryRailSectionProps = {
   title: string;
   sectionSubtitle?: string | null;
   apiPath: '/dishes/featured' | '/dishes/trending';
-  geoResolved: boolean;
-  nearMeCoords: { lat: number; lng: number; radius_km: number } | null;
-  /**
-   * Comma-separated district names when not using `nearMeCoords` — same `district` query as GET /restaurants.
-   */
+  /** Initial geolocation attempt finished (any outcome). */
+  locationReady: boolean;
+  /** Nearby (strict): lat + lng + radius_km — excludes island-wide fallback. */
+  strictNearbyCoords: { lat: number; lng: number; radius_km: number } | null;
+  /** Default mode: lat + lng only — server uses for ranking bias, not hard radius filter. */
+  biasCoords: { lat: number; lng: number } | null;
+  /** Comma-separated district names (same as GET /restaurants). */
   districtCsv?: string | null;
-  /** Dev-only: resolved district ids for logging (homepage maps names → ids). */
-  districtIdsForDebug?: string[];
-  /** True while Nearby is fetching a fresh fix — do not call dish APIs with stale/missing coords. */
-  deferGeoFetch?: boolean;
+  /** True while Nearby is resolving a fresh fix — do not call with incomplete strict params. */
+  deferUntilNearbyReady?: boolean;
   locationLabel?: string | null;
   badgeMode: 'popular' | 'trending';
   onSeeAll?: () => void;
@@ -33,6 +33,8 @@ function buildApiUrl(path: string, params?: Record<string, string | number>): st
   const url = new URL(path, `${base}/`);
   if (params) {
     for (const [k, v] of Object.entries(params)) {
+      if (v === undefined || v === null) continue;
+      if (typeof v === 'number' && !Number.isFinite(v)) continue;
       url.searchParams.set(k, String(v));
     }
   }
@@ -89,11 +91,11 @@ export function DishDiscoveryRailSection({
   title,
   sectionSubtitle = null,
   apiPath,
-  geoResolved,
-  nearMeCoords,
+  locationReady,
+  strictNearbyCoords,
+  biasCoords,
   districtCsv = null,
-  districtIdsForDebug,
-  deferGeoFetch = false,
+  deferUntilNearbyReady = false,
   locationLabel = null,
   badgeMode,
   onSeeAll,
@@ -103,8 +105,8 @@ export function DishDiscoveryRailSection({
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!hasMounted || !geoResolved) return;
-    if (deferGeoFetch) {
+    if (!hasMounted || !locationReady) return;
+    if (deferUntilNearbyReady) {
       setLoading(true);
       return;
     }
@@ -112,24 +114,19 @@ export function DishDiscoveryRailSection({
     setLoading(true);
 
     const params: Record<string, string | number> = {};
-    if (nearMeCoords) {
-      params.lat = nearMeCoords.lat;
-      params.lng = nearMeCoords.lng;
-      params.radius_km = nearMeCoords.radius_km;
-    } else if (districtCsv && districtCsv.trim() !== '') {
+    if (strictNearbyCoords) {
+      params.lat = strictNearbyCoords.lat;
+      params.lng = strictNearbyCoords.lng;
+      params.radius_km = strictNearbyCoords.radius_km;
+    } else if (biasCoords) {
+      params.lat = biasCoords.lat;
+      params.lng = biasCoords.lng;
+    }
+    if (districtCsv && districtCsv.trim() !== '') {
       params.district = districtCsv;
     }
 
     const dishUrl = buildApiUrl(apiPath, params);
-
-    if (process.env.NODE_ENV === 'development') {
-      // Temporary: trace dish scope vs homepage district selection.
-      console.log('[lm:dish-district-debug]', apiPath, {
-        districtNames: districtCsv ?? null,
-        districtIds: districtIdsForDebug ?? [],
-        finalUrl: dishUrl,
-      });
-    }
 
     fetch(dishUrl, { cache: 'no-store' })
       .then(async (res) => {
@@ -157,28 +154,34 @@ export function DishDiscoveryRailSection({
   }, [
     apiPath,
     hasMounted,
-    geoResolved,
-    deferGeoFetch,
+    locationReady,
+    deferUntilNearbyReady,
     districtCsv,
-    nearMeCoords?.lat,
-    nearMeCoords?.lng,
-    nearMeCoords?.radius_km,
+    strictNearbyCoords?.lat,
+    strictNearbyCoords?.lng,
+    strictNearbyCoords?.radius_km,
+    biasCoords?.lat,
+    biasCoords?.lng,
   ]);
 
-  if (!hasMounted || !geoResolved) {
+  if (!hasMounted || !locationReady) {
     return null;
   }
 
   const hasLocationScope =
-    (districtCsv != null && districtCsv.trim() !== '') || nearMeCoords != null;
+    strictNearbyCoords != null ||
+    biasCoords != null ||
+    (districtCsv != null && districtCsv.trim() !== '');
 
   if (!loading && (!dishes || dishes.length === 0)) {
     if (!hasLocationScope) {
       return null;
     }
-    const emptyCopy = nearMeCoords
+    const emptyCopy = strictNearbyCoords
       ? 'No dishes in this area yet. Try a different location or browse by district.'
-      : 'No dishes in the selected district yet. Try All Districts or pick another district.';
+      : biasCoords
+        ? 'No dishes match your location bias yet. Try a district filter or check back later.'
+        : 'No dishes in the selected district yet. Try All Districts or pick another district.';
     return (
       <section className="scroll-mt-4">
         <HomeSectionHeader

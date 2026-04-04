@@ -1,8 +1,17 @@
 import { Transform } from 'class-transformer';
-import { IsOptional, IsString, IsIn, MaxLength } from 'class-validator';
+import {
+  IsOptional,
+  IsString,
+  IsIn,
+  MaxLength,
+  Validate,
+  ValidatorConstraint,
+  ValidatorConstraintInterface,
+  ValidationArguments,
+} from 'class-validator';
 
 /** Query parsers may yield a string[] when duplicate keys exist; take first non-empty. */
-function firstQueryString(value: unknown): string | undefined {
+export function firstQueryString(value: unknown): string | undefined {
   if (value === undefined || value === null) return undefined;
   if (Array.isArray(value)) {
     const v = value.find((x) => x !== undefined && x !== null && String(x).trim() !== '');
@@ -12,6 +21,51 @@ function firstQueryString(value: unknown): string | undefined {
   return s === '' ? undefined : s;
 }
 
+/** Shared rules for GET /restaurants geo (bias vs strict). */
+export function validateRestaurantSearchGeoFields(o: {
+  lat?: string;
+  lng?: string;
+  radius_km?: string;
+}):
+  | { ok: true }
+  | { ok: false; message: string } {
+  const latP = firstQueryString(o.lat);
+  const lngP = firstQueryString(o.lng);
+  const radP = firstQueryString(o.radius_km);
+  const hasLat = !!latP;
+  const hasLng = !!lngP;
+  const hasRadius = !!radP;
+  if ((hasLat && !hasLng) || (!hasLat && hasLng)) {
+    return {
+      ok: false,
+      message: 'Both lat and lng are required for location search',
+    };
+  }
+  if (hasRadius && (!hasLat || !hasLng)) {
+    return {
+      ok: false,
+      message: 'lat and lng are required when radius_km is provided',
+    };
+  }
+  return { ok: true };
+}
+
+@ValidatorConstraint({ name: 'restaurantSearchGeo', async: false })
+export class RestaurantSearchGeoConstraint implements ValidatorConstraintInterface {
+  validate(_value: unknown, args: ValidationArguments): boolean {
+    return validateRestaurantSearchGeoFields(
+      args.object as { lat?: string; lng?: string; radius_km?: string },
+    ).ok;
+  }
+
+  defaultMessage(args: ValidationArguments): string {
+    const r = validateRestaurantSearchGeoFields(
+      args.object as { lat?: string; lng?: string; radius_km?: string },
+    );
+    return r.ok ? 'Invalid geo parameters' : r.message;
+  }
+}
+
 export class SearchRestaurantsDto {
   /** Client cache-buster; ignored (allowed so forbidNonWhitelisted does not 400). */
   @IsOptional()
@@ -19,22 +73,28 @@ export class SearchRestaurantsDto {
   @MaxLength(32)
   _ts?: string;
 
-  /** Latitude for "near me" search (use with lng and radius_km). */
+  /** Latitude for bias (with lng, no radius) or strict nearby (with lng + radius_km). */
   @IsOptional()
+  @Transform(({ value }) => firstQueryString(value))
   @IsString()
-  @MaxLength(20)
+  @MaxLength(40)
+  @Validate(RestaurantSearchGeoConstraint)
   lat?: string;
 
-  /** Longitude for "near me" search (use with lat and radius_km). */
+  /** Longitude — pair with lat. */
   @IsOptional()
+  @Transform(({ value }) => firstQueryString(value))
   @IsString()
-  @MaxLength(20)
+  @MaxLength(40)
+  @Validate(RestaurantSearchGeoConstraint)
   lng?: string;
 
-  /** Radius in km for "near me" search (use with lat and lng). */
+  /** Radius in km — only with lat + lng for strict filtering. */
   @IsOptional()
+  @Transform(({ value }) => firstQueryString(value))
   @IsString()
-  @MaxLength(20)
+  @MaxLength(24)
+  @Validate(RestaurantSearchGeoConstraint)
   radius_km?: string;
 
   @IsOptional()
@@ -91,7 +151,11 @@ export class SearchRestaurantsDto {
    * `rating` is an alias for `top_rated`.
    */
   @IsOptional()
-  @Transform(({ value }) => firstQueryString(value))
+  @Transform(({ value }) => {
+    const v = firstQueryString(value);
+    if (v === 'topRated') return 'top_rated';
+    return v;
+  })
   @IsString()
   @IsIn([
     'relevance',

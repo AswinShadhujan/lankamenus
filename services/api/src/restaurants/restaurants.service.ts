@@ -1,7 +1,9 @@
 import {
   Injectable,
+  Logger,
   NotFoundException,
   BadRequestException,
+  OnModuleInit,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../prisma/prisma.service';
@@ -23,7 +25,11 @@ import { Prisma } from '@prisma/client';
 import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
 import { RankingService } from '../ranking/ranking.service';
 import { RESTAURANT_LIST_SELECT } from './restaurant-list.select';
-import { SearchRestaurantsDto } from './dto/search-restaurants.dto';
+import {
+  SearchRestaurantsDto,
+  firstQueryString,
+  validateRestaurantSearchGeoFields,
+} from './dto/search-restaurants.dto';
 import { CreateRestaurantDto } from './dto/create-restaurant.dto';
 import { UpdateRestaurantDto } from './dto/update-restaurant.dto';
 
@@ -32,6 +38,18 @@ const SELECT_RESTAURANT = RESTAURANT_LIST_SELECT;
 /** Default page size; max enforced for scalability (offset pagination). */
 const DEFAULT_PAGE_SIZE = 20;
 const MAX_PAGE_SIZE = 50;
+
+/** Great-circle distance for bias ordering (lat/lng without radius filter). */
+function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371;
+  const toRad = (d: number) => (d * Math.PI) / 180;
+  const dLat = toRad(lat2 - lat1);
+  const dLon = toRad(lon2 - lon1);
+  const a =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
 
 export type RestaurantsSearchResult = {
   data: ((typeof SELECT_RESTAURANT extends infer S
@@ -66,7 +84,9 @@ function isValidCachedListResult(value: unknown): value is RestaurantsSearchResu
 }
 
 @Injectable()
-export class RestaurantsService {
+export class RestaurantsService implements OnModuleInit {
+  private readonly logger = new Logger(RestaurantsService.name);
+
   constructor(
     private prisma: PrismaService,
     private searchService: SearchService,
@@ -74,6 +94,11 @@ export class RestaurantsService {
     private config: ConfigService,
     private rankingService: RankingService,
   ) {}
+
+  /** TODO(geo): remove after confirming production runs current source (not stale dist). */
+  onModuleInit(): void {
+    this.logger.log('NEW GEO VALIDATION ACTIVE');
+  }
 
   /** `limit` wins over legacy `pagesize`. Clamped to [1, MAX_PAGE_SIZE]. */
   private resolvePageSize(dto: SearchRestaurantsDto): number {
@@ -157,20 +182,44 @@ export class RestaurantsService {
   }
 
   async search(dto: SearchRestaurantsDto): Promise<RestaurantsSearchResult> {
-    const hasPartialLocation =
-      dto.lat != null || dto.lng != null || dto.radius_km != null;
-    const hasLocation =
-      dto.lat != null && dto.lng != null && dto.radius_km != null;
+    const latP = firstQueryString(dto.lat);
+    const lngP = firstQueryString(dto.lng);
+    const radP = firstQueryString(dto.radius_km);
+    const hasLat = !!latP;
+    const hasLng = !!lngP;
+    const hasRadius = !!radP;
 
-    if (hasPartialLocation && !hasLocation) {
-      throw new BadRequestException(
-        'lat, lng, and radius_km must be provided together for location search',
-      );
+    const geoCheck = validateRestaurantSearchGeoFields(dto);
+    if (!geoCheck.ok) {
+      throw new BadRequestException(geoCheck.message);
     }
 
-    const page = Math.max(parseInt(dto.page ?? '1', 10), 1);
-    const pageSize = this.resolvePageSize(dto);
-    const cacheKey = buildRestaurantsListCacheKey(dto, page, pageSize);
+    const strictGeo = !!(latP && lngP && radP);
+    const biasGeo = !!(latP && lngP && !radP);
+    const geoMode: 'bias' | 'strict' | 'none' = strictGeo
+      ? 'strict'
+      : biasGeo
+        ? 'bias'
+        : 'none';
+
+    // TODO(geo): remove after verifying bias vs strict in production
+    this.logger.log(
+      JSON.stringify({
+        tag: 'restaurants_search',
+        route: 'GET /restaurants',
+        hasLat,
+        hasLng,
+        hasRadius,
+        sort: dto.sort ?? null,
+        mode: geoMode,
+      }),
+    );
+
+    const dtoForSearch = dto;
+
+    const page = Math.max(parseInt(dtoForSearch.page ?? '1', 10), 1);
+    const pageSize = this.resolvePageSize(dtoForSearch);
+    const cacheKey = buildRestaurantsListCacheKey(dtoForSearch, page, pageSize);
 
     if (this.cache.isConfigured()) {
       const cached = await this.cache.get(cacheKey);
@@ -186,10 +235,10 @@ export class RestaurantsService {
       }
     }
 
-    const result = await this.runRestaurantSearch(dto, page, pageSize);
+    const result = await this.runRestaurantSearch(dtoForSearch, page, pageSize);
 
     if (this.cache.isConfigured()) {
-      const ttl = this.resolveListCacheTtl(dto, page, pageSize, hasLocation);
+      const ttl = this.resolveListCacheTtl(dtoForSearch, page, pageSize, strictGeo);
       await this.cache.set(cacheKey, JSON.stringify(result), ttl);
     }
     return result;
@@ -204,16 +253,22 @@ export class RestaurantsService {
     const skip = (page - 1) * pageSize;
     const take = pageSize;
 
-    const hasLocation =
-      dto.lat != null && dto.lng != null && dto.radius_km != null;
+    const latP = firstQueryString(dto.lat);
+    const lngP = firstQueryString(dto.lng);
+    const radP = firstQueryString(dto.radius_km);
+    const strictGeo = !!(latP && lngP && radP);
+    const biasGeo = !!(latP && lngP && !radP);
+
+    let biasLat: number | undefined;
+    let biasLng: number | undefined;
 
     let locationIds: number[] = [];
     let distanceById: Map<number, number> = new Map();
 
-    if (hasLocation) {
-      const lat = parseFloat(dto.lat!);
-      const lng = parseFloat(dto.lng!);
-      const radiusKm = parseFloat(dto.radius_km!);
+    if (strictGeo) {
+      const lat = parseFloat(latP!);
+      const lng = parseFloat(lngP!);
+      const radiusKm = parseFloat(radP!);
       if (isNaN(lat) || lat < -90 || lat > 90) {
         throw new BadRequestException('Invalid lat');
       }
@@ -242,6 +297,17 @@ export class RestaurantsService {
         const m = typeof r.distance_m === 'string' ? parseFloat(r.distance_m) : r.distance_m;
         distanceById.set(r.id, Number.isNaN(m) ? 0 : m / 1000);
       });
+    } else if (biasGeo) {
+      const lat = parseFloat(latP!);
+      const lng = parseFloat(lngP!);
+      if (isNaN(lat) || lat < -90 || lat > 90) {
+        throw new BadRequestException('Invalid lat');
+      }
+      if (isNaN(lng) || lng < -180 || lng > 180) {
+        throw new BadRequestException('Invalid lng');
+      }
+      biasLat = lat;
+      biasLng = lng;
     }
 
     const where: Prisma.restaurantsWhereInput = {};
@@ -371,10 +437,11 @@ export class RestaurantsService {
     }
 
     const hasTextQuery = !!qTrimmed;
-    const hasEffectiveLocation = hasLocation && locationIds.length > 0;
+    const strictGeoEffective = strictGeo && locationIds.length > 0;
     const sortMode = this.rankingService.resolveSortMode(
       dto,
-      hasEffectiveLocation,
+      strictGeoEffective,
+      biasGeo,
       hasTextQuery,
     );
     const orderBy = this.rankingService.getPrismaOrderBy(sortMode);
@@ -383,14 +450,14 @@ export class RestaurantsService {
     }
 
     const useGeoDistanceSort =
-      hasEffectiveLocation &&
-      distanceById.size > 0 &&
-      sortMode === 'distance';
+      sortMode === 'distance' &&
+      ((strictGeoEffective && distanceById.size > 0) ||
+        (biasGeo && biasLat != null && biasLng != null));
 
     const useMeiliRelevanceOrder =
       useMeilisearch &&
       !!meiliCandidateIds &&
-      !(hasLocation && distanceById.size > 0) &&
+      !(strictGeo && distanceById.size > 0) &&
       sortMode === 'default_relevance';
 
     let [total, rows] = await this.prisma.$transaction([
@@ -431,19 +498,34 @@ export class RestaurantsService {
     type ListRow = (typeof rows)[number] & { distance_km?: number };
 
     const attachDistance = (list: typeof rows): ListRow[] =>
-      hasLocation && distanceById.size > 0
-        ? list.map((r) => ({
+      list.map((r) => {
+        if (strictGeoEffective && distanceById.size > 0) {
+          const dkm = distanceById.get(r.id);
+          return dkm !== undefined ? { ...r, distance_km: dkm } : (r as ListRow);
+        }
+        if (
+          biasGeo &&
+          biasLat != null &&
+          biasLng != null &&
+          r.latitude != null &&
+          r.longitude != null
+        ) {
+          return {
             ...r,
-            distance_km: distanceById.get(r.id),
-          }))
-        : (list as ListRow[]);
+            distance_km: haversineKm(biasLat, biasLng, r.latitude, r.longitude),
+          };
+        }
+        return r as ListRow;
+      });
 
     let data: ListRow[];
 
     if (useGeoDistanceSort) {
       const withDistance = attachDistance(rows);
       withDistance.sort(
-        (a, b) => (a.distance_km ?? Infinity) - (b.distance_km ?? Infinity),
+        (a, b) =>
+          (a.distance_km ?? Number.POSITIVE_INFINITY) -
+          (b.distance_km ?? Number.POSITIVE_INFINITY),
       );
       data = withDistance.slice(skip, skip + take);
     } else if (useMeiliRelevanceOrder && meiliCandidateIds) {

@@ -113,25 +113,33 @@ describe('RestaurantsService', () => {
       expect(result.meta.limit).toBe(10);
     });
 
-    it('should throw BadRequestException when only lat provided', async () => {
+    it('should reject when only lat is provided', async () => {
       const dto: SearchRestaurantsDto = { lat: '6.9' };
-
       await expect(service.search(dto)).rejects.toThrow(BadRequestException);
       await expect(service.search(dto)).rejects.toThrow(
-        'lat, lng, and radius_km must be provided together',
+        'Both lat and lng are required',
       );
     });
 
-    it('should throw BadRequestException when only lng provided', async () => {
+    it('should reject when only lng is provided', async () => {
       const dto: SearchRestaurantsDto = { lng: '79.9' };
-
       await expect(service.search(dto)).rejects.toThrow(BadRequestException);
+      await expect(service.search(dto)).rejects.toThrow(
+        'Both lat and lng are required',
+      );
     });
 
-    it('should throw BadRequestException when lat and lng but no radius_km', async () => {
-      const dto: SearchRestaurantsDto = { lat: '6.9', lng: '79.9' };
-
+    it('should reject radius_km without lat and lng', async () => {
+      const dto: SearchRestaurantsDto = { radius_km: '10' };
       await expect(service.search(dto)).rejects.toThrow(BadRequestException);
+      await expect(service.search(dto)).rejects.toThrow('radius_km');
+    });
+
+    it('should accept lat and lng without radius_km (bias mode)', async () => {
+      jest.spyOn(prisma, '$transaction').mockResolvedValue([2, [mockRestaurant]] as never);
+      const dto: SearchRestaurantsDto = { lat: '6.9', lng: '79.9' };
+      const result = await service.search(dto);
+      expect(result.total).toBe(2);
     });
 
     it('should throw BadRequestException for invalid lat', async () => {

@@ -9,9 +9,6 @@ import { PrismaService } from '../prisma/prisma.service';
 import { SRI_LANKA_DISTRICTS } from '../locations/data/sri-lanka-districts';
 import type { DishGeoQueryDto } from './dto/dish-geo.query.dto';
 
-/** Default radius when `lat` + `lng` are sent without `radius_km`. */
-const DEFAULT_DISH_GEO_RADIUS_KM = 12;
-
 /** Unified discovery card JSON for featured + trending. */
 export type DishDiscoveryRow = {
   id: number;
@@ -58,19 +55,14 @@ export class DishesService {
     return this.config.get<string>('NODE_ENV') !== 'production';
   }
 
-  private parseGeo(
+  /** Strict ST_DWithin filter — requires radius_km (Nearby mode). */
+  private parseStrictGeo(
     query: DishGeoQueryDto,
   ): { lat: number; lng: number; radiusM: number } | null {
     const latRaw = query.lat?.trim();
     const lngRaw = query.lng?.trim();
     const radiusRaw = query.radius_km?.trim();
-
-    if (!latRaw && !lngRaw && !radiusRaw) {
-      return null;
-    }
-
-    // Incomplete geo (e.g. stray query params) must not 400 — otherwise clients fall back to [] and hide rails.
-    if (!latRaw || !lngRaw) {
+    if (!latRaw || !lngRaw || !radiusRaw) {
       return null;
     }
 
@@ -83,9 +75,7 @@ export class DishesService {
       throw new BadRequestException('Invalid lng');
     }
 
-    const radiusKm = radiusRaw
-      ? parseFloat(radiusRaw)
-      : DEFAULT_DISH_GEO_RADIUS_KM;
+    const radiusKm = parseFloat(radiusRaw);
     if (Number.isNaN(radiusKm) || radiusKm <= 0 || radiusKm > 500) {
       throw new BadRequestException(
         'radius_km must be a number between 0 and 500',
@@ -93,6 +83,30 @@ export class DishesService {
     }
 
     return { lat, lng, radiusM: radiusKm * 1000 };
+  }
+
+  /** Lat/lng only: bias ordering, no radius filter (default homepage mode). */
+  private parseBiasPoint(query: DishGeoQueryDto): { lat: number; lng: number } | null {
+    const latRaw = query.lat?.trim();
+    const lngRaw = query.lng?.trim();
+    const radiusRaw = query.radius_km?.trim();
+    if (!latRaw || !lngRaw || radiusRaw) {
+      return null;
+    }
+    const lat = parseFloat(latRaw);
+    const lng = parseFloat(lngRaw);
+    if (Number.isNaN(lat) || lat < -90 || lat > 90) {
+      return null;
+    }
+    if (Number.isNaN(lng) || lng < -180 || lng > 180) {
+      return null;
+    }
+    return { lat, lng };
+  }
+
+  /** Secondary sort: prefer restaurants closer to the user when geom exists. */
+  private dishBiasOrderSql(p: { lat: number; lng: number }): Prisma.Sql {
+    return Prisma.sql`, (CASE WHEN r.geom IS NOT NULL THEN ST_Distance(r.geom::geography, ST_SetSRID(ST_MakePoint(${p.lng}, ${p.lat}), 4326)::geography)::double precision ELSE 1e15::double precision END) ASC NULLS LAST`;
   }
 
   /** Same parsing as restaurant search: comma-separated, trimmed, de-duped. */
@@ -206,13 +220,17 @@ export class DishesService {
    * Does not sort by click_count or rating_count.
    */
   async getFeatured(query: DishGeoQueryDto = {}): Promise<DishDiscoveryRow[]> {
-    const geo = this.parseGeo(query);
-    const geoFilter = geo != null ? this.buildLocationFilter(geo) : Prisma.sql``;
+    const strictGeo = this.parseStrictGeo(query);
+    const biasPoint = this.parseBiasPoint(query);
+    const geoFilter =
+      strictGeo != null ? this.buildLocationFilter(strictGeo) : Prisma.sql``;
+    const biasOrder =
+      biasPoint != null ? this.dishBiasOrderSql(biasPoint) : Prisma.sql``;
     const districtNames = this.parseDistrictList(query);
     const districtFilter = this.buildDistrictFilter(districtNames);
     if (this.isDevDebug()) {
       this.logger.log(
-        `[dish-district-debug] featured districtRaw=${query.district ?? '∅'} districtParsed=${JSON.stringify(districtNames)} hasGeo=${geo != null}`,
+        `[dish-district-debug] featured districtRaw=${query.district ?? '∅'} districtParsed=${JSON.stringify(districtNames)} strictGeo=${strictGeo != null} bias=${biasPoint != null}`,
       );
     }
 
@@ -244,7 +262,7 @@ export class DishesService {
         ${districtFilter}
       ORDER BY
         mi.is_popular DESC,
-        mi.is_recommended DESC,
+        mi.is_recommended DESC${biasOrder},
         r.popular_score DESC NULLS LAST,
         mi.id ASC
       LIMIT 10
@@ -279,14 +297,14 @@ export class DishesService {
           ${geoFilter}
           ${districtFilter}
         ORDER BY
-          r.rating DESC NULLS LAST,
+          r.rating DESC NULLS LAST${biasOrder},
           r.popular_score DESC NULLS LAST,
           mi.id ASC
         LIMIT 10
       `);
     }
 
-    if (fallbackRows.length === 0 && geo != null) {
+    if (fallbackRows.length === 0 && strictGeo != null) {
       fallbackRows = await this.prisma.$queryRaw<
         (RawDishRow & { restaurant_popular_score: number | null })[]
       >(Prisma.sql`
@@ -339,13 +357,17 @@ export class DishesService {
    * Trending: click_count primary; tie-break updated_at, id.
    */
   async getTrending(query: DishGeoQueryDto = {}): Promise<DishDiscoveryRow[]> {
-    const geo = this.parseGeo(query);
-    const geoFilter = geo != null ? this.buildLocationFilter(geo) : Prisma.sql``;
+    const strictGeo = this.parseStrictGeo(query);
+    const biasPoint = this.parseBiasPoint(query);
+    const geoFilter =
+      strictGeo != null ? this.buildLocationFilter(strictGeo) : Prisma.sql``;
+    const biasOrder =
+      biasPoint != null ? this.dishBiasOrderSql(biasPoint) : Prisma.sql``;
     const districtNames = this.parseDistrictList(query);
     const districtFilter = this.buildDistrictFilter(districtNames);
     if (this.isDevDebug()) {
       this.logger.log(
-        `[dish-district-debug] trending districtRaw=${query.district ?? '∅'} districtParsed=${JSON.stringify(districtNames)} hasGeo=${geo != null}`,
+        `[dish-district-debug] trending districtRaw=${query.district ?? '∅'} districtParsed=${JSON.stringify(districtNames)} strictGeo=${strictGeo != null} bias=${biasPoint != null}`,
       );
     }
 
@@ -372,7 +394,7 @@ export class DishesService {
         ${geoFilter}
         ${districtFilter}
       ORDER BY
-        COALESCE(mi.click_count, 0) DESC,
+        COALESCE(mi.click_count, 0) DESC${biasOrder},
         mi.updated_at DESC,
         mi.id ASC
       LIMIT 10
@@ -403,14 +425,14 @@ export class DishesService {
           ${geoFilter}
           ${districtFilter}
         ORDER BY
-          r.rating DESC NULLS LAST,
+          r.rating DESC NULLS LAST${biasOrder},
           COALESCE(mi.click_count, 0) DESC,
           mi.id ASC
         LIMIT 10
       `);
     }
 
-    if (fallbackRows.length === 0 && geo != null) {
+    if (fallbackRows.length === 0 && strictGeo != null) {
       fallbackRows = await this.prisma.$queryRaw<RawDishRow[]>(Prisma.sql`
         SELECT
           mi.id,

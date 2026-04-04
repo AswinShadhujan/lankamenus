@@ -10,6 +10,7 @@ import {
   Delete,
   HttpCode,
   HttpStatus,
+  Logger,
   NotFoundException,
   UseGuards,
   Res,
@@ -17,7 +18,10 @@ import {
 import type { Response } from 'express';
 
 import { RestaurantsService } from './restaurants.service';
-import { SearchRestaurantsDto } from './dto/search-restaurants.dto';
+import {
+  SearchRestaurantsDto,
+  firstQueryString,
+} from './dto/search-restaurants.dto';
 import { CreateRestaurantDto } from './dto/create-restaurant.dto';
 import { UpdateRestaurantDto } from './dto/update-restaurant.dto';
 import { GooglePlacesService } from '../integrations/google/google-places.service';
@@ -30,6 +34,8 @@ import { RolesGuard } from '../auth/roles.guard';
 
 @Controller('restaurants')
 export class RestaurantsController {
+  private readonly logger = new Logger(RestaurantsController.name);
+
   constructor(
     private readonly restaurantsService: RestaurantsService,
     private readonly googlePlacesService: GooglePlacesService,
@@ -40,6 +46,16 @@ export class RestaurantsController {
   @Public()
   @Get()
   search(@Query() query: SearchRestaurantsDto) {
+    // TODO(geo): remove after verifying bias vs strict in production
+    this.logger.log(
+      JSON.stringify({
+        tag: 'GET_restaurants_hit',
+        hasLat: !!firstQueryString(query.lat),
+        hasLng: !!firstQueryString(query.lng),
+        hasRadius: !!firstQueryString(query.radius_km),
+        sort: query.sort ?? null,
+      }),
+    );
     return this.restaurantsService.search(query);
   }
 

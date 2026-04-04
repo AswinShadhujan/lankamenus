@@ -16,6 +16,9 @@ export const RESTAURANT_LIST_SELECT = {
   veg_friendly: true,
   halal_certified: true,
   created_at: true,
+  /** Used for lat/lng-only (bias) distance ordering on the homepage. */
+  latitude: true,
+  longitude: true,
   rating: true,
   /** Google `user_ratings_total` (import / backfill). */
   rating_count: true,

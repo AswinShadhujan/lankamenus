@@ -26,30 +26,36 @@ export class RankingService {
    * - No sort + location → distance
    * - Text query + no explicit sort + no location → Meilisearch relevance when enabled
    */
+  /**
+   * @param strictGeoEffective ST_DWithin radius filter produced at least one id (Nearby strict mode).
+   * @param biasGeo lat+lng without radius — all-island list, distance used only when sort mode is distance.
+   */
   resolveSortMode(
     dto: SearchRestaurantsDto,
-    hasLocation: boolean,
+    strictGeoEffective: boolean,
+    biasGeo: boolean,
     hasTextQuery: boolean,
   ): RestaurantSortMode {
     const s = dto.sort?.trim();
+    const coordsForDefaultDistanceSort = strictGeoEffective || biasGeo;
 
     if (s === 'top_rated' || s === 'rating') return 'top_rated';
     if (s === 'popular') return 'popular';
     if (s === 'trending') return 'trending';
     if (s === 'price') return 'price';
-    if (s === 'distance') return hasLocation ? 'distance' : 'default_created';
+    if (s === 'distance') return strictGeoEffective ? 'distance' : 'default_created';
 
     if (!s) {
-      if (hasLocation) return 'distance';
+      if (coordsForDefaultDistanceSort) return 'distance';
       if (hasTextQuery) return 'default_relevance';
       return 'default_created';
     }
 
     if (s === 'relevance') {
-      return hasLocation ? 'distance' : 'default_relevance';
+      return strictGeoEffective ? 'distance' : 'default_relevance';
     }
 
-    return hasLocation ? 'distance' : 'default_created';
+    return coordsForDefaultDistanceSort ? 'distance' : 'default_created';
   }
 
   /** True when Prisma should order by rating / popular_score / trending_score. */
