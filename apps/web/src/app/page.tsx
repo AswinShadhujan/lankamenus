@@ -33,6 +33,7 @@ import {
   runInitialGeolocation,
   type UserLocationState,
 } from '@/lib/homeUserLocation';
+import { buildHomeGeoQuery, mergeDistrictAndGeo } from '@/lib/homeLocationApi';
 
 const DEFAULT_RADIUS_KM = 10;
 
@@ -171,75 +172,31 @@ export default function HomePage() {
 
   const locationReady = isLocationResolved(userLocation);
 
-  /** Strict Nearby: same lat/lng as userLocation + radius (no second GPS read). */
-  const nearbyStrictGeo = useMemo(() => {
-    if (selectedSort !== 'distance') return null;
-    if (userLocation.status !== 'granted') return null;
-    return {
-      lat: userLocation.lat,
-      lng: userLocation.lng,
-      radiusKm: DEFAULT_RADIUS_KM,
-    };
-  }, [selectedSort, userLocation]);
+  /** User chose Nearby sort — strict geo (lat+lng+radius) when coordinates are usable. */
+  const nearbySortActive = selectedSort === 'distance';
+  const strictNearbyReady = nearbySortActive && userLocation.status === 'granted';
 
-  const nearbyEnabled = selectedSort === 'distance';
-
-  /**
-   * Default mode: lat/lng only (ranking bias). Nearby mode: lat/lng/radius_km + sort=distance (strict).
-   * Never sends radius without Nearby.
-   */
-  const homeGeoParams = useCallback((): Record<string, string | number> => {
-    const g: Record<string, string | number> = {};
-    if (selectedSort === 'distance') {
-      if (nearbyStrictGeo) {
-        g.lat = nearbyStrictGeo.lat;
-        g.lng = nearbyStrictGeo.lng;
-        g.radius_km = nearbyStrictGeo.radiusKm;
-      }
-      return g;
-    }
-    if (userLocation.status === 'granted') {
-      g.lat = userLocation.lat;
-      g.lng = userLocation.lng;
-    }
-    return g;
-  }, [selectedSort, nearbyStrictGeo, userLocation]);
-
-  const dishDistrictCsv = useMemo(() => {
-    if (selectedDistricts.length === 0) return null;
-    return selectedDistricts.join(',');
-  }, [selectedDistricts]);
-
-  const dishStrictNearby = useMemo(
-    () =>
-      nearbyStrictGeo
-        ? {
-            lat: nearbyStrictGeo.lat,
-            lng: nearbyStrictGeo.lng,
-            radius_km: nearbyStrictGeo.radiusKm,
-          }
-        : null,
-    [nearbyStrictGeo],
+  /** Single geo slice for every homepage API (grid, rails, dishes). */
+  const geoForApi = useMemo(
+    () => buildHomeGeoQuery(userLocation, nearbySortActive, DEFAULT_RADIUS_KM),
+    [userLocation, nearbySortActive],
   );
 
-  const dishBiasCoords = useMemo(() => {
-    if (dishStrictNearby) return null;
-    if (userLocation.status !== 'granted') return null;
-    return { lat: userLocation.lat, lng: userLocation.lng };
-  }, [dishStrictNearby, userLocation]);
+  /** District + geo — identical for restaurant rails and dish rails. */
+  const homeSharedQuery = useMemo(
+    () => mergeDistrictAndGeo(selectedDistricts, geoForApi),
+    [selectedDistricts, geoForApi],
+  );
 
-  /** All Restaurants grid. */
+  /** All Restaurants grid (adds search, categories, sort). */
   const buildFeedParams = useCallback(() => {
-    const params: Record<string, string | number> = {};
+    const params: Record<string, string | number> = { ...homeSharedQuery };
     const q = urlQuery.trim();
     if (q) params.q = q;
-    if (selectedDistricts.length > 0) params.district = selectedDistricts.join(',');
     if (selectedCategories.length > 0) params.cuisine = selectedCategories.join(',');
 
-    Object.assign(params, homeGeoParams());
-
     if (selectedSort === 'distance') {
-      if (nearbyStrictGeo) params.sort = 'distance';
+      if (userLocation.status === 'granted') params.sort = 'distance';
     } else if (selectedSort === 'popular') {
       params.sort = 'popular';
     } else if (selectedSort === 'top_rated') {
@@ -249,25 +206,24 @@ export default function HomePage() {
     }
 
     return params;
-  }, [
-    urlQuery,
-    selectedDistricts,
-    selectedCategories,
-    selectedSort,
-    nearbyStrictGeo,
-    homeGeoParams,
-  ]);
+  }, [homeSharedQuery, urlQuery, selectedCategories, selectedSort, userLocation.status]);
 
+  /** Restaurant discovery rails: same shared query + pagination (sort per request). */
   const buildRailParams = useCallback((): Record<string, string | number> => {
-    const params: Record<string, string | number> = { page: 1, limit: RAIL_PAGE_SIZE };
-    if (selectedDistricts.length > 0) params.district = selectedDistricts.join(',');
-    Object.assign(params, homeGeoParams());
-    return params;
-  }, [selectedDistricts, homeGeoParams]);
+    return { page: 1, limit: RAIL_PAGE_SIZE, ...homeSharedQuery };
+  }, [homeSharedQuery]);
 
   const loadRails = useCallback(async () => {
     setRailsLoading(true);
     const base = buildRailParams();
+    if (process.env.NODE_ENV === 'development') {
+      // eslint-disable-next-line no-console -- temporary rail request trace
+      console.log('[restaurant rails fetch]', {
+        popular: buildApiUrl('/restaurants', { ...base, sort: 'popular' }),
+        topRated: buildApiUrl('/restaurants', { ...base, sort: 'top_rated' }),
+        trending: buildApiUrl('/restaurants', { ...base, sort: 'trending' }),
+      });
+    }
     try {
       const railResults = await Promise.allSettled([
         fetch(buildApiUrl('/restaurants', { ...base, sort: 'popular' }), { cache: 'no-store' }).then((r) =>
@@ -303,7 +259,7 @@ export default function HomePage() {
       return;
     }
 
-    if (selectedSort === 'distance' && !nearbyStrictGeo) {
+    if (selectedSort === 'distance' && userLocation.status !== 'granted') {
       setFeedLoading(false);
       setGridRestaurants([]);
       setGridTotal(0);
@@ -314,6 +270,10 @@ export default function HomePage() {
     setFeedLoading(true);
     const params = buildFeedParams();
     const listUrl = buildApiUrl('/restaurants', { ...params, page: 1, limit: GRID_PAGE_SIZE });
+    if (process.env.NODE_ENV === 'development') {
+      // eslint-disable-next-line no-console -- temporary grid request trace
+      console.log('[all restaurants fetch]', listUrl);
+    }
     try {
       const gRes = await fetch(listUrl, { cache: 'no-store' }).then(
         (r) => r.json() as Promise<RestaurantsListResponse>,
@@ -339,11 +299,11 @@ export default function HomePage() {
     buildFeedParams,
     feedRetryNonce,
     selectedSort,
-    nearbyStrictGeo,
+    userLocation.status,
     locationReady,
   ]);
 
-  /** Dev-only: confirm one location source + final request URLs. */
+  /** Dev-only: one log line per request surface (verify list === rails base === dishes geo). */
   useEffect(() => {
     if (process.env.NODE_ENV !== 'development') return;
     if (typeof window === 'undefined') return;
@@ -353,50 +313,36 @@ export default function HomePage() {
     const railPopular = buildApiUrl('/restaurants', { ...base, sort: 'popular' });
     const railTop = buildApiUrl('/restaurants', { ...base, sort: 'top_rated' });
     const railTrend = buildApiUrl('/restaurants', { ...base, sort: 'trending' });
-    const dishParams: Record<string, string | number> = {};
-    if (dishStrictNearby) {
-      dishParams.lat = dishStrictNearby.lat;
-      dishParams.lng = dishStrictNearby.lng;
-      dishParams.radius_km = dishStrictNearby.radius_km;
-    } else if (dishBiasCoords) {
-      dishParams.lat = dishBiasCoords.lat;
-      dishParams.lng = dishBiasCoords.lng;
-    }
-    if (dishDistrictCsv?.trim()) dishParams.district = dishDistrictCsv;
-    const dishFeatured = buildApiUrl('/dishes/featured', dishParams);
-    const dishTrending = buildApiUrl('/dishes/trending', dishParams);
+    const dishFeatured = buildApiUrl('/dishes/featured', homeSharedQuery);
+    const dishTrending = buildApiUrl('/dishes/trending', homeSharedQuery);
     // eslint-disable-next-line no-console -- temporary homepage geo diagnostics
-    console.log('[home geo]', {
+    console.log('[home location requests]', {
       userLocation,
-      nearbyEnabled,
-      restaurantsListUrl: listUrl,
-      railPopularUrl: railPopular,
-      railTopRatedUrl: railTop,
-      railTrendingUrl: railTrend,
+      nearbySortActive,
+      strictNearbyReady,
+      geoForApi,
+      homeSharedQuery,
+      allRestaurantsUrl: listUrl,
+      restaurantRailPopularUrl: railPopular,
+      restaurantRailTopRatedUrl: railTop,
+      restaurantRailTrendingUrl: railTrend,
       dishFeaturedUrl: dishFeatured,
       dishTrendingUrl: dishTrending,
     });
   }, [
     userLocation,
-    nearbyEnabled,
+    nearbySortActive,
+    strictNearbyReady,
+    geoForApi,
+    homeSharedQuery,
     buildRailParams,
     buildFeedParams,
-    dishStrictNearby,
-    dishBiasCoords,
-    dishDistrictCsv,
   ]);
 
   useEffect(() => {
     if (!locationReady) return;
     void loadRails();
-  }, [
-    locationReady,
-    loadRails,
-    nearbyStrictGeo,
-    userLocation,
-    selectedDistricts.join(','),
-    selectedSort,
-  ]);
+  }, [locationReady, loadRails, homeSharedQuery, selectedSort]);
 
   useEffect(() => {
     void loadFeed();
@@ -404,7 +350,7 @@ export default function HomePage() {
 
   const loadMore = useCallback(async () => {
     if (!hasMore || loadingMore || feedLoading || fetchError) return;
-    if (selectedSort === 'distance' && !nearbyStrictGeo) return;
+    if (selectedSort === 'distance' && userLocation.status !== 'granted') return;
     setLoadingMore(true);
     const params = buildFeedParams();
     const moreUrl = buildApiUrl('/restaurants', { ...params, page: nextGridPage, limit: GRID_PAGE_SIZE });
@@ -427,7 +373,16 @@ export default function HomePage() {
     } finally {
       setLoadingMore(false);
     }
-  }, [hasMore, loadingMore, feedLoading, fetchError, nextGridPage, buildFeedParams, selectedSort, nearbyStrictGeo]);
+  }, [
+    hasMore,
+    loadingMore,
+    feedLoading,
+    fetchError,
+    nextGridPage,
+    buildFeedParams,
+    selectedSort,
+    userLocation.status,
+  ]);
 
   loadMoreRef.current = loadMore;
 
@@ -636,8 +591,8 @@ export default function HomePage() {
   }, [selectedDistricts]);
 
   const railLocationLabel = useMemo(() => {
-    if (selectedSort === 'distance' && nearbyStrictGeo) {
-      return `📍 Nearby · ${nearbyStrictGeo.radiusKm} km (strict)`;
+    if (strictNearbyReady) {
+      return `📍 Nearby · ${DEFAULT_RADIUS_KM} km (strict)`;
     }
     if (userLocation.status === 'granted') {
       if (selectedDistricts.length > 0) {
@@ -648,7 +603,7 @@ export default function HomePage() {
       return '📍 Using your location';
     }
     return getLocationLabel(null, selectedDistricts);
-  }, [selectedSort, nearbyStrictGeo, userLocation, selectedDistricts]);
+  }, [strictNearbyReady, userLocation, selectedDistricts]);
 
   const emptyDescription =
     filterHighRating
@@ -793,10 +748,10 @@ export default function HomePage() {
             {locationError}
           </p>
         )}
-        {selectedSort === 'distance' && nearbyStrictGeo && (
+        {strictNearbyReady && (
           <div className="mt-3">
             <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
-              Strict mode: restaurants and dishes within {nearbyStrictGeo.radiusKm} km of your current position.
+              Strict mode: restaurants and dishes within {DEFAULT_RADIUS_KM} km of your current position.
             </p>
             <p className="mt-0.5 text-xs" style={{ color: 'var(--text-secondary)' }}>
               List, dish rails, and restaurant rails use the same coordinates — no silent island-wide fallback.
@@ -833,17 +788,13 @@ export default function HomePage() {
       >
         <PopularDishesSection
           locationReady={locationReady}
-          strictNearbyCoords={dishStrictNearby}
-          biasCoords={dishBiasCoords}
-          districtCsv={dishDistrictCsv}
+          apiQuery={homeSharedQuery}
           locationLabel={railLocationLabel}
           onSeeAll={scrollToAllRestaurants}
         />
         <TrendingDishesSection
           locationReady={locationReady}
-          strictNearbyCoords={dishStrictNearby}
-          biasCoords={dishBiasCoords}
-          districtCsv={dishDistrictCsv}
+          apiQuery={homeSharedQuery}
           locationLabel={railLocationLabel}
           onSeeAll={scrollToAllRestaurants}
         />

@@ -15,16 +15,20 @@ export type DishDiscoveryRailSectionProps = {
   apiPath: '/dishes/featured' | '/dishes/trending';
   /** Initial geolocation attempt finished (any outcome). */
   locationReady: boolean;
-  /** Nearby (strict): lat + lng + radius_km — excludes island-wide fallback. */
-  strictNearbyCoords: { lat: number; lng: number; radius_km: number } | null;
-  /** Default mode: lat + lng only — server uses for ranking bias, not hard radius filter. */
-  biasCoords: { lat: number; lng: number } | null;
-  /** Comma-separated district names (same as GET /restaurants). */
-  districtCsv?: string | null;
+  /**
+   * Same `district` + geo keys as restaurant rails (`homeSharedQuery` from the homepage).
+   */
+  apiQuery: Record<string, string | number>;
   locationLabel?: string | null;
   badgeMode: 'popular' | 'trending';
   onSeeAll?: () => void;
 };
+
+function dishQueryHasScope(q: Record<string, string | number>): boolean {
+  const d = q.district;
+  if (typeof d === 'string' && d.trim() !== '') return true;
+  return q.lat != null;
+}
 
 function buildApiUrl(path: string, params?: Record<string, string | number>): string {
   const base = (getApiBaseUrl() || window.location.origin).replace(/\/$/, '');
@@ -90,9 +94,7 @@ export function DishDiscoveryRailSection({
   sectionSubtitle = null,
   apiPath,
   locationReady,
-  strictNearbyCoords,
-  biasCoords,
-  districtCsv = null,
+  apiQuery,
   locationLabel = null,
   badgeMode,
   onSeeAll,
@@ -106,20 +108,12 @@ export function DishDiscoveryRailSection({
     let cancelled = false;
     setLoading(true);
 
-    const params: Record<string, string | number> = {};
-    if (strictNearbyCoords) {
-      params.lat = strictNearbyCoords.lat;
-      params.lng = strictNearbyCoords.lng;
-      params.radius_km = strictNearbyCoords.radius_km;
-    } else if (biasCoords) {
-      params.lat = biasCoords.lat;
-      params.lng = biasCoords.lng;
-    }
-    if (districtCsv && districtCsv.trim() !== '') {
-      params.district = districtCsv;
-    }
+    const dishUrl = buildApiUrl(apiPath, apiQuery);
 
-    const dishUrl = buildApiUrl(apiPath, params);
+    if (process.env.NODE_ENV === 'development') {
+      // eslint-disable-next-line no-console -- temporary dish request trace
+      console.log('[dish rail fetch]', apiPath, dishUrl);
+    }
 
     fetch(dishUrl, { cache: 'no-store' })
       .then(async (res) => {
@@ -144,34 +138,23 @@ export function DishDiscoveryRailSection({
     return () => {
       cancelled = true;
     };
-  }, [
-    apiPath,
-    hasMounted,
-    locationReady,
-    districtCsv,
-    strictNearbyCoords?.lat,
-    strictNearbyCoords?.lng,
-    strictNearbyCoords?.radius_km,
-    biasCoords?.lat,
-    biasCoords?.lng,
-  ]);
+  }, [apiPath, hasMounted, locationReady, apiQuery]);
 
   if (!hasMounted || !locationReady) {
     return null;
   }
 
-  const hasLocationScope =
-    strictNearbyCoords != null ||
-    biasCoords != null ||
-    (districtCsv != null && districtCsv.trim() !== '');
+  const hasLocationScope = dishQueryHasScope(apiQuery);
+  const strictNearby = apiQuery.radius_km != null;
+  const biasOnly = apiQuery.lat != null && apiQuery.radius_km == null;
 
   if (!loading && (!dishes || dishes.length === 0)) {
     if (!hasLocationScope) {
       return null;
     }
-    const emptyCopy = strictNearbyCoords
+    const emptyCopy = strictNearby
       ? 'No dishes in this area yet. Try a different location or browse by district.'
-      : biasCoords
+      : biasOnly
         ? 'No dishes match your location bias yet. Try a district filter or check back later.'
         : 'No dishes in the selected district yet. Try All Districts or pick another district.';
     return (
