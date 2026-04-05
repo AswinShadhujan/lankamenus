@@ -94,13 +94,50 @@ type RestaurantRankingBlendParts = {
   blend: number;
 };
 
+/** Per-section, per-geo tuning: dRef (km scale for decay), wProx (weight on proximity term). */
+function restaurantBlendParams(
+  sortMode: 'popular' | 'top_rated' | 'trending',
+  geoKind: 'bias' | 'strict',
+): { dRef: number; wProx: number; topRatedNormMul: number } {
+  if (geoKind === 'strict') {
+    // Nearby: distance-first; section signal is a tie-break within the radius.
+    switch (sortMode) {
+      case 'popular':
+        return { dRef: 1.65, wProx: 0.9, topRatedNormMul: 2 };
+      case 'top_rated':
+        return { dRef: 1.15, wProx: 0.94, topRatedNormMul: 1.8 };
+      case 'trending':
+        return { dRef: 1.45, wProx: 0.91, topRatedNormMul: 2 };
+    }
+  }
+  // Bias: preserve Popular; push Top Rated + Trending more local; compress star spread for Top Rated.
+  switch (sortMode) {
+    case 'popular':
+      return { dRef: 16, wProx: 0.66, topRatedNormMul: 2 };
+    case 'top_rated':
+      return { dRef: 6.5, wProx: 0.84, topRatedNormMul: 3.2 };
+    case 'trending':
+      return { dRef: 9.5, wProx: 0.8, topRatedNormMul: 2 };
+  }
+}
+
+function normRestaurantSectionSignal(
+  sortMode: RestaurantSortMode,
+  baseSection: number,
+  topRatedNormMul: number,
+): number {
+  if (sortMode === 'top_rated') {
+    return Math.log1p(Math.max(0, baseSection) * topRatedNormMul);
+  }
+  return Math.log1p(Math.max(0, baseSection));
+}
+
 /**
- * Blend section identity (popular / trending / top_rated) with proximity.
- * Tuned for stronger locality: steeper distance decay + higher proximity weight.
- * `top_rated` uses scaled norm so small rating gaps still compete with distance.
+ * Additive blend: wSec * normSection + wProx * proximity.
+ * Bias: section-tuned weights (Popular milder). Strict: distance-dominant.
  */
 function computeRestaurantRankingBlend(
-  sortMode: RestaurantSortMode,
+  sortMode: 'popular' | 'top_rated' | 'trending',
   row: {
     rating: number | null;
     popular_score?: number | null;
@@ -109,14 +146,17 @@ function computeRestaurantRankingBlend(
   distanceKm: number | undefined,
   geoKind: 'bias' | 'strict',
 ): RestaurantRankingBlendParts {
+  const { dRef, wProx, topRatedNormMul } = restaurantBlendParams(
+    sortMode,
+    geoKind,
+  );
   const baseSection = sectionSignalForSort(row, sortMode);
-  let normSection = Math.log1p(Math.max(0, baseSection));
-  if (sortMode === 'top_rated') {
-    normSection = Math.log1p(Math.max(0, baseSection) * 8);
-  }
-  const dRef = geoKind === 'strict' ? 3 : 14;
+  const normSection = normRestaurantSectionSignal(
+    sortMode,
+    baseSection,
+    topRatedNormMul,
+  );
   const proximity = proximityFactor(distanceKm, dRef);
-  const wProx = geoKind === 'strict' ? 0.78 : 0.7;
   const wSec = 1 - wProx;
   const blend = wSec * normSection + wProx * proximity;
   return {
@@ -625,9 +665,10 @@ export class RestaurantsService implements OnModuleInit {
     } else if (useRankingGeoBlend) {
       const geoKind: 'bias' | 'strict' = strictGeoEffective ? 'strict' : 'bias';
       const withDistance = attachDistance(rows);
+      const rankingSort = sortMode as 'popular' | 'top_rated' | 'trending';
       const scored = withDistance.map((r) => {
         const parts = computeRestaurantRankingBlend(
-          sortMode,
+          rankingSort,
           r,
           r.distance_km,
           geoKind,
@@ -642,17 +683,21 @@ export class RestaurantsService implements OnModuleInit {
         this.logger.log(
           JSON.stringify({
             tag: 'restaurants_ranking_blend',
+            section:
+              sortMode === 'popular'
+                ? 'popular_restaurants'
+                : sortMode === 'top_rated'
+                  ? 'top_rated_restaurants'
+                  : 'trending_restaurants',
             mode: strictGeoEffective ? 'strict' : 'bias',
             sort: sortMode,
             top10: top.map((t) => ({
               id: t.r.id,
-              baseSection: Number(t.parts.baseSection.toFixed(4)),
-              normSection: Number(t.parts.normSection.toFixed(4)),
               distance_km:
                 t.parts.distanceKm != null
                   ? Number(t.parts.distanceKm.toFixed(2))
                   : null,
-              proximity: Number(t.parts.proximity.toFixed(4)),
+              baseSection: Number(t.parts.baseSection.toFixed(4)),
               blend: Number(t.parts.blend.toFixed(4)),
             })),
           }),

@@ -149,14 +149,23 @@ export class DishesService {
     blend: number;
   } {
     const dist = row.rest_dist_km ?? 6000;
-    const dRef = geoKind === 'strict' ? 7 : 12;
-    const proximity = this.dishProximity(dist, dRef);
     const pop = Number(row.restaurant_popular_score ?? 0);
     const flags =
       (row.is_popular ? 0.45 : 0) + (row.is_recommended ? 0.3 : 0);
     const secPart = Math.log1p(Math.max(0, pop));
-    const wSec = geoKind === 'strict' ? 0.11 : 0.17;
-    const blend = secPart * (wSec + (1 - wSec) * proximity) + flags;
+    if (geoKind === 'strict') {
+      const dRef = 1.05;
+      const wProx = 0.93;
+      const wSec = 1 - wProx;
+      const proximity = this.dishProximity(dist, dRef);
+      const blend = wSec * secPart + wProx * proximity + flags;
+      return { baseSection: pop, distanceKm: dist, proximity, blend };
+    }
+    const dRef = 8.5;
+    const wProx = 0.76;
+    const wSec = 1 - wProx;
+    const proximity = this.dishProximity(dist, dRef);
+    const blend = wSec * secPart + wProx * proximity + flags;
     return { baseSection: pop, distanceKm: dist, proximity, blend };
   }
 
@@ -177,12 +186,21 @@ export class DishesService {
     blend: number;
   } {
     const dist = row.rest_dist_km ?? 6000;
-    const dRef = geoKind === 'strict' ? 5.5 : 10;
-    const proximity = this.dishProximity(dist, dRef);
     const clicks = row.click_count ?? 0;
     const secPart = Math.log1p(Math.max(0, clicks));
-    const wSec = geoKind === 'strict' ? 0.13 : 0.19;
-    const blend = secPart * (wSec + (1 - wSec) * proximity);
+    if (geoKind === 'strict') {
+      const dRef = 0.85;
+      const wProx = 0.95;
+      const wSec = 1 - wProx;
+      const proximity = this.dishProximity(dist, dRef);
+      const blend = wSec * secPart + wProx * proximity;
+      return { baseSection: clicks, distanceKm: dist, proximity, blend };
+    }
+    const dRef = 7.5;
+    const wProx = 0.8;
+    const wSec = 1 - wProx;
+    const proximity = this.dishProximity(dist, dRef);
+    const blend = wSec * secPart + wProx * proximity;
     return { baseSection: clicks, distanceKm: dist, proximity, blend };
   }
 
@@ -198,9 +216,12 @@ export class DishesService {
     if (!this.isDevDebug() || rows.length === 0 || mode === 'none') return;
     const geoKind = mode === 'strict' ? 'strict' : 'bias';
     const top = rows.slice(0, 10);
+    const section =
+      kind === 'featured' ? 'featured_dishes' : 'trending_dishes';
     this.logger.log(
       JSON.stringify({
         tag: 'dishes_ranking_blend',
+        section,
         kind,
         mode,
         top10: top.map((r) => {
@@ -216,9 +237,8 @@ export class DishesService {
           return {
             id: r.id,
             restId: r.restaurant_id,
-            baseSection: Number(p.baseSection),
             distance_km: Number(p.distanceKm.toFixed(2)),
-            proximity: Number(p.proximity.toFixed(4)),
+            baseSection: Number(p.baseSection),
             blend: Number(p.blend.toFixed(4)),
           };
         }),
