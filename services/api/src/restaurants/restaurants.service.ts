@@ -24,6 +24,7 @@ import {
 import { Prisma } from '@prisma/client';
 import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
 import { RankingService } from '../ranking/ranking.service';
+import type { RestaurantSortMode } from '../ranking/ranking.types';
 import { RESTAURANT_LIST_SELECT } from './restaurant-list.select';
 import {
   SearchRestaurantsDto,
@@ -49,6 +50,83 @@ function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): nu
     Math.sin(dLat / 2) ** 2 +
     Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+/**
+ * Cap in-memory geo+ranking blend (ordered fetch = global section sort).
+ * Slightly below old 2500: keeps latency bounded; blend weights do most local work.
+ */
+const RANKING_GEO_BLEND_MAX_ROWS = 1600;
+
+/** 0..1 — higher when closer to the user. `dRefKm` scales decay (smaller = more local). */
+function proximityFactor(distanceKm: number | undefined, dRefKm: number): number {
+  if (distanceKm == null || !Number.isFinite(distanceKm)) {
+    return 0.06;
+  }
+  return 1 / (1 + distanceKm / dRefKm);
+}
+
+function sectionSignalForSort(
+  row: {
+    rating: number | null;
+    popular_score?: number | null;
+    trending_score?: number | null;
+  },
+  sortMode: RestaurantSortMode,
+): number {
+  switch (sortMode) {
+    case 'popular':
+      return row.popular_score ?? 0;
+    case 'trending':
+      return row.trending_score ?? 0;
+    case 'top_rated':
+      return Number(row.rating) || 0;
+    default:
+      return 0;
+  }
+}
+
+type RestaurantRankingBlendParts = {
+  baseSection: number;
+  normSection: number;
+  distanceKm: number | null;
+  proximity: number;
+  blend: number;
+};
+
+/**
+ * Blend section identity (popular / trending / top_rated) with proximity.
+ * Tuned for stronger locality: steeper distance decay + higher proximity weight.
+ * `top_rated` uses scaled norm so small rating gaps still compete with distance.
+ */
+function computeRestaurantRankingBlend(
+  sortMode: RestaurantSortMode,
+  row: {
+    rating: number | null;
+    popular_score?: number | null;
+    trending_score?: number | null;
+  },
+  distanceKm: number | undefined,
+  geoKind: 'bias' | 'strict',
+): RestaurantRankingBlendParts {
+  const baseSection = sectionSignalForSort(row, sortMode);
+  let normSection = Math.log1p(Math.max(0, baseSection));
+  if (sortMode === 'top_rated') {
+    normSection = Math.log1p(Math.max(0, baseSection) * 8);
+  }
+  const dRef = geoKind === 'strict' ? 3 : 14;
+  const proximity = proximityFactor(distanceKm, dRef);
+  const wProx = geoKind === 'strict' ? 0.78 : 0.7;
+  const wSec = 1 - wProx;
+  const blend = wSec * normSection + wProx * proximity;
+  return {
+    baseSection,
+    normSection,
+    distanceKm:
+      distanceKm != null && Number.isFinite(distanceKm) ? distanceKm : null,
+    proximity,
+    blend,
+  };
 }
 
 export type RestaurantsSearchResult = {
@@ -460,39 +538,55 @@ export class RestaurantsService implements OnModuleInit {
       !(strictGeo && distanceById.size > 0) &&
       sortMode === 'default_relevance';
 
-    let [total, rows] = await this.prisma.$transaction([
-      this.prisma.restaurants.count({ where }),
-      useGeoDistanceSort || useMeiliRelevanceOrder
-        ? this.prisma.restaurants.findMany({
-            where,
-            orderBy,
-            select: SELECT_RESTAURANT,
-          })
-        : this.prisma.restaurants.findMany({
-            where,
-            skip,
-            take,
-            orderBy,
-            select: SELECT_RESTAURANT,
-          }),
-    ]);
+    const useRankingGeoBlend =
+      this.rankingService.usesDbRankingSort(sortMode) &&
+      !useMeiliRelevanceOrder &&
+      ((biasGeo && biasLat != null && biasLng != null) ||
+        (strictGeoEffective && distanceById.size > 0));
 
-    // If ranking signals are sparse and sorted result set is empty, fall back to a stable default list.
-    if (
-      total === 0 &&
-      (sortMode === 'popular' || sortMode === 'top_rated' || sortMode === 'trending')
-    ) {
-      const fallbackOrderBy = [{ created_at: 'desc' as const }, { id: 'asc' as const }];
-      [total, rows] = await this.prisma.$transaction([
-        this.prisma.restaurants.count({ where }),
-        this.prisma.restaurants.findMany({
+    const fetchLargeList =
+      useGeoDistanceSort || useMeiliRelevanceOrder || useRankingGeoBlend;
+
+    const total = await this.prisma.restaurants.count({ where });
+
+    const capRankingBlend =
+      useRankingGeoBlend && total > RANKING_GEO_BLEND_MAX_ROWS;
+    if (capRankingBlend) {
+      this.logger.warn(
+        `Restaurants ranking geo blend: capping candidates at ${RANKING_GEO_BLEND_MAX_ROWS} of ${total} rows`,
+      );
+    }
+
+    let rows = fetchLargeList
+      ? await this.prisma.restaurants.findMany({
+          where,
+          orderBy,
+          select: SELECT_RESTAURANT,
+          ...(capRankingBlend ? { take: RANKING_GEO_BLEND_MAX_ROWS } : {}),
+        })
+      : await this.prisma.restaurants.findMany({
           where,
           skip,
           take,
-          orderBy: fallbackOrderBy,
+          orderBy,
           select: SELECT_RESTAURANT,
-        }),
-      ]);
+        });
+
+    // If ranking signals are sparse and sorted result set is empty, fall back to a stable default list.
+    let totalOut = total;
+    if (
+      totalOut === 0 &&
+      (sortMode === 'popular' || sortMode === 'top_rated' || sortMode === 'trending')
+    ) {
+      const fallbackOrderBy = [{ created_at: 'desc' as const }, { id: 'asc' as const }];
+      totalOut = await this.prisma.restaurants.count({ where });
+      rows = await this.prisma.restaurants.findMany({
+        where,
+        skip,
+        take,
+        orderBy: fallbackOrderBy,
+        select: SELECT_RESTAURANT,
+      });
     }
 
     type ListRow = (typeof rows)[number] & { distance_km?: number };
@@ -528,6 +622,42 @@ export class RestaurantsService implements OnModuleInit {
           (b.distance_km ?? Number.POSITIVE_INFINITY),
       );
       data = withDistance.slice(skip, skip + take);
+    } else if (useRankingGeoBlend) {
+      const geoKind: 'bias' | 'strict' = strictGeoEffective ? 'strict' : 'bias';
+      const withDistance = attachDistance(rows);
+      const scored = withDistance.map((r) => {
+        const parts = computeRestaurantRankingBlend(
+          sortMode,
+          r,
+          r.distance_km,
+          geoKind,
+        );
+        return { r, score: parts.blend, parts };
+      });
+      scored.sort((a, b) => b.score - a.score);
+      data = scored.map((s) => s.r).slice(skip, skip + take);
+
+      if (process.env.NODE_ENV !== 'production') {
+        const top = scored.slice(0, 10);
+        this.logger.log(
+          JSON.stringify({
+            tag: 'restaurants_ranking_blend',
+            mode: strictGeoEffective ? 'strict' : 'bias',
+            sort: sortMode,
+            top10: top.map((t) => ({
+              id: t.r.id,
+              baseSection: Number(t.parts.baseSection.toFixed(4)),
+              normSection: Number(t.parts.normSection.toFixed(4)),
+              distance_km:
+                t.parts.distanceKm != null
+                  ? Number(t.parts.distanceKm.toFixed(2))
+                  : null,
+              proximity: Number(t.parts.proximity.toFixed(4)),
+              blend: Number(t.parts.blend.toFixed(4)),
+            })),
+          }),
+        );
+      }
     } else if (useMeiliRelevanceOrder && meiliCandidateIds) {
       const orderMap = new Map(meiliCandidateIds.map((id, i) => [id, i]));
       const sorted = [...rows].sort(
@@ -538,7 +668,7 @@ export class RestaurantsService implements OnModuleInit {
       data = attachDistance(rows);
     }
 
-    return this.wrapSearchResult(page, pageSize, total, data);
+    return this.wrapSearchResult(page, pageSize, totalOut, data);
   }
 
   async findOne(id: number) {

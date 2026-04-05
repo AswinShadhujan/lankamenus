@@ -22,4 +22,7 @@ export const RESTAURANT_LIST_SELECT = {
   rating: true,
   /** Google `user_ratings_total` (import / backfill). */
   rating_count: true,
+  /** DB-generated; used for geo-blended popular / trending sorts. */
+  popular_score: true,
+  trending_score: true,
 } as const;
