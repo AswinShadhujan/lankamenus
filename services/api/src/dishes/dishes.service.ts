@@ -9,8 +9,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { SRI_LANKA_DISTRICTS } from '../locations/data/sri-lanka-districts';
 import type { DishGeoQueryDto } from './dto/dish-geo.query.dto';
 
-/** Menu-item candidates before in-memory geo blend (larger pool → more local dishes survive SQL pre-order). */
-const DISH_GEO_BLEND_POOL = 88;
+/** Menu-item candidates before in-memory geo blend. */
+const DISH_GEO_BLEND_POOL = 64;
 
 /** Unified discovery card JSON for featured + trending. */
 export type DishDiscoveryRow = {
@@ -161,8 +161,8 @@ export class DishesService {
       const blend = wSec * secPart + wProx * proximity + flags;
       return { baseSection: pop, distanceKm: dist, proximity, blend };
     }
-    const dRef = 8.5;
-    const wProx = 0.76;
+    const dRef = 6;
+    const wProx = 0.82;
     const wSec = 1 - wProx;
     const proximity = this.dishProximity(dist, dRef);
     const blend = wSec * secPart + wProx * proximity + flags;
@@ -196,8 +196,8 @@ export class DishesService {
       const blend = wSec * secPart + wProx * proximity;
       return { baseSection: clicks, distanceKm: dist, proximity, blend };
     }
-    const dRef = 7.5;
-    const wProx = 0.8;
+    const dRef = 5.5;
+    const wProx = 0.85;
     const wSec = 1 - wProx;
     const proximity = this.dishProximity(dist, dRef);
     const blend = wSec * secPart + wProx * proximity;
@@ -467,39 +467,17 @@ export class DishesService {
       `);
     }
 
-    if (fallbackRows.length === 0 && strictGeo != null) {
-      fallbackRows = await this.prisma.$queryRaw<
-        (RawDishRow & { restaurant_popular_score: number | null; rest_dist_km?: unknown })[]
-      >(Prisma.sql`
-        SELECT
-          mi.id,
-          mi.name,
-          mi.price,
-          mi.currency,
-          mi.image_url,
-          mi.is_popular,
-          mi.is_recommended,
-          COALESCE(mi.click_count, 0)::int AS click_count,
-          ms.menu_id,
-          r.id AS restaurant_id,
-          r.name_default AS restaurant_name,
-          r.rating AS restaurant_rating,
-          r.popular_score AS restaurant_popular_score
-          ${distSelect}
-        FROM menu_items mi
-        INNER JOIN menu_sections ms ON mi.menu_section_id = ms.id
-        INNER JOIN menus m ON ms.menu_id = m.id
-        INNER JOIN restaurants r ON m.restaurant_id = r.id
-        WHERE m.is_active = true
-          AND mi.is_available = true
-          ${districtFilter}
-        ORDER BY
-          r.rating DESC NULLS LAST,
-          r.popular_score DESC NULLS LAST
-          ${this.dishPoolDistanceOrderSql(useDishGeoBlend)},
-          mi.id ASC
-        LIMIT ${poolLimit}
-      `);
+    if (this.isDevDebug() && strictGeo != null) {
+      this.logger.log(
+        JSON.stringify({
+          tag: 'dishes_strict_nearby_debug',
+          section: 'featured_dishes',
+          lat: strictGeo.lat,
+          lng: strictGeo.lng,
+          radius_km: strictGeo.radiusM / 1000,
+          poolRowCount: fallbackRows.length,
+        }),
+      );
     }
 
     let parsed = this.parseDishRestDistKm(fallbackRows);
@@ -626,38 +604,17 @@ export class DishesService {
       `);
     }
 
-    if (fallbackRows.length === 0 && strictGeo != null) {
-      fallbackRows = await this.prisma.$queryRaw<
-        (RawDishRow & { rest_dist_km?: unknown })[]
-      >(Prisma.sql`
-        SELECT
-          mi.id,
-          mi.name,
-          mi.price,
-          mi.currency,
-          mi.image_url,
-          mi.is_popular,
-          mi.is_recommended,
-          COALESCE(mi.click_count, 0)::int AS click_count,
-          ms.menu_id,
-          r.id AS restaurant_id,
-          r.name_default AS restaurant_name,
-          r.rating AS restaurant_rating
-          ${distSelect}
-        FROM menu_items mi
-        INNER JOIN menu_sections ms ON mi.menu_section_id = ms.id
-        INNER JOIN menus m ON ms.menu_id = m.id
-        INNER JOIN restaurants r ON m.restaurant_id = r.id
-        WHERE m.is_active = true
-          AND mi.is_available = true
-          ${districtFilter}
-        ORDER BY
-          r.rating DESC NULLS LAST,
-          COALESCE(mi.click_count, 0) DESC
-          ${this.dishPoolDistanceOrderSql(useDishGeoBlend)},
-          mi.id ASC
-        LIMIT ${poolLimit}
-      `);
+    if (this.isDevDebug() && strictGeo != null) {
+      this.logger.log(
+        JSON.stringify({
+          tag: 'dishes_strict_nearby_debug',
+          section: 'trending_dishes',
+          lat: strictGeo.lat,
+          lng: strictGeo.lng,
+          radius_km: strictGeo.radiusM / 1000,
+          poolRowCount: fallbackRows.length,
+        }),
+      );
     }
 
     let parsed = this.parseDishRestDistKm(fallbackRows);

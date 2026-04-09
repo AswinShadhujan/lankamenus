@@ -115,7 +115,7 @@ function restaurantBlendParams(
     case 'popular':
       return { dRef: 16, wProx: 0.66, topRatedNormMul: 2 };
     case 'top_rated':
-      return { dRef: 6.5, wProx: 0.84, topRatedNormMul: 3.2 };
+      return { dRef: 4.5, wProx: 0.9, topRatedNormMul: 2.1 };
     case 'trending':
       return { dRef: 9.5, wProx: 0.8, topRatedNormMul: 2 };
   }
@@ -320,7 +320,6 @@ export class RestaurantsService implements OnModuleInit {
         ? 'bias'
         : 'none';
 
-    // TODO(geo): remove after verifying bias vs strict in production
     this.logger.log(
       JSON.stringify({
         tag: 'restaurants_search',
@@ -330,6 +329,13 @@ export class RestaurantsService implements OnModuleInit {
         hasRadius,
         sort: dto.sort ?? null,
         mode: geoMode,
+        ...(strictGeo && latP && lngP && radP
+          ? {
+              lat: parseFloat(latP),
+              lng: parseFloat(lngP),
+              radius_km: parseFloat(radP),
+            }
+          : {}),
       }),
     );
 
@@ -360,6 +366,112 @@ export class RestaurantsService implements OnModuleInit {
       await this.cache.set(cacheKey, JSON.stringify(result), ttl);
     }
     return result;
+  }
+
+  /**
+   * Strict radius: restaurants with PostGIS `geom`, plus `geom IS NULL` rows that have
+   * lat/lng within the same meter radius (matches dish strict filter). Never returns
+   * “all island” when the user asked for Nearby — empty means truly no matches.
+   */
+  private async loadStrictNearbyRestaurantSet(
+    lat: number,
+    lng: number,
+    radiusM: number,
+  ): Promise<{
+    locationIds: number[];
+    distanceById: Map<number, number>;
+    geomMatchCount: number;
+    latLngFallbackRowCount: number;
+  }> {
+    const distanceById = new Map<number, number>();
+
+    const geomRows = await this.prisma.$queryRaw<
+      { id: number; distance_m: number | string }[]
+    >(
+      Prisma.sql`
+        SELECT id, ST_Distance(geom::geography, ST_SetSRID(ST_MakePoint(${lng}, ${lat}), 4326)::geography) AS distance_m
+        FROM restaurants
+        WHERE geom IS NOT NULL
+          AND ST_DWithin(
+            geom::geography,
+            ST_SetSRID(ST_MakePoint(${lng}, ${lat}), 4326)::geography,
+            ${radiusM}
+          )
+      `,
+    );
+    for (const r of geomRows) {
+      const m =
+        typeof r.distance_m === 'string'
+          ? parseFloat(r.distance_m)
+          : r.distance_m;
+      distanceById.set(r.id, Number.isNaN(m) ? 0 : m / 1000);
+    }
+
+    const latLngRows = await this.prisma.$queryRaw<
+      { id: number; distance_m: number | string }[]
+    >(
+      Prisma.sql`
+        SELECT
+          id,
+          (
+            6371000.0
+            * acos(
+              LEAST(
+                1.0::double precision,
+                GREATEST(
+                  -1.0::double precision,
+                  cos(radians(${lat}::double precision))
+                    * cos(radians(latitude::double precision))
+                    * cos(
+                      radians(longitude::double precision)
+                      - radians(${lng}::double precision)
+                    )
+                  + sin(radians(${lat}::double precision))
+                    * sin(radians(latitude::double precision))
+                )
+              )
+            )
+          ) AS distance_m
+        FROM restaurants
+        WHERE geom IS NULL
+          AND latitude IS NOT NULL
+          AND longitude IS NOT NULL
+          AND (
+            6371000.0
+            * acos(
+              LEAST(
+                1.0::double precision,
+                GREATEST(
+                  -1.0::double precision,
+                  cos(radians(${lat}::double precision))
+                    * cos(radians(latitude::double precision))
+                    * cos(
+                      radians(longitude::double precision)
+                      - radians(${lng}::double precision)
+                    )
+                  + sin(radians(${lat}::double precision))
+                    * sin(radians(latitude::double precision))
+                )
+              )
+            )
+          ) <= ${radiusM}::double precision
+      `,
+    );
+    for (const r of latLngRows) {
+      if (distanceById.has(r.id)) continue;
+      const m =
+        typeof r.distance_m === 'string'
+          ? parseFloat(r.distance_m)
+          : r.distance_m;
+      distanceById.set(r.id, Number.isNaN(m) ? 0 : m / 1000);
+    }
+
+    return {
+      locationIds: [...distanceById.keys()],
+      distanceById,
+      geomMatchCount: geomRows.length,
+      latLngFallbackRowCount: latLngRows.length,
+    };
   }
 
   /** Core DB / Meilisearch query for GET /restaurants (no cache read/write). */
@@ -400,21 +512,29 @@ export class RestaurantsService implements OnModuleInit {
       }
       const radiusM = radiusKm * 1000;
 
-      const rows = await this.prisma.$queryRaw<
-        { id: number; distance_m: number | string }[]
-      >(
-        Prisma.sql`
-          SELECT id, ST_Distance(geom::geography, ST_SetSRID(ST_MakePoint(${lng}, ${lat}), 4326)::geography) as distance_m
-          FROM restaurants
-          WHERE geom IS NOT NULL
-          AND ST_DWithin(geom::geography, ST_SetSRID(ST_MakePoint(${lng}, ${lat}), 4326)::geography, ${radiusM})
-        `,
+      const nearby = await this.loadStrictNearbyRestaurantSet(
+        lat,
+        lng,
+        radiusM,
       );
-      locationIds = rows.map((r) => r.id);
-      rows.forEach((r) => {
-        const m = typeof r.distance_m === 'string' ? parseFloat(r.distance_m) : r.distance_m;
-        distanceById.set(r.id, Number.isNaN(m) ? 0 : m / 1000);
-      });
+      locationIds = nearby.locationIds;
+      distanceById = nearby.distanceById;
+
+      if (process.env.NODE_ENV !== 'production') {
+        this.logger.log(
+          JSON.stringify({
+            tag: 'restaurants_strict_nearby_debug',
+            lat,
+            lng,
+            radius_km: radiusKm,
+            radius_m: radiusM,
+            geomMatchCount: nearby.geomMatchCount,
+            latLngFallbackRowCount: nearby.latLngFallbackRowCount,
+            mergedCandidateCount: locationIds.length,
+            strictFilterEmpty: locationIds.length === 0,
+          }),
+        );
+      }
     } else if (biasGeo) {
       const lat = parseFloat(latP!);
       const lng = parseFloat(lngP!);
@@ -430,8 +550,12 @@ export class RestaurantsService implements OnModuleInit {
 
     const where: Prisma.restaurantsWhereInput = {};
 
-    if (locationIds.length > 0) {
-      where.id = { in: locationIds };
+    if (strictGeo) {
+      if (locationIds.length === 0) {
+        where.id = { equals: -1 };
+      } else {
+        where.id = { in: locationIds };
+      }
     }
 
     const qTrimmed = dto.q?.trim();
@@ -440,27 +564,41 @@ export class RestaurantsService implements OnModuleInit {
     let meiliCandidateIds: number[] | null = null;
 
     if (useMeilisearch) {
+      if (strictGeo && locationIds.length === 0) {
+        useMeilisearch = false;
+      }
       try {
-        const { ids: meiliIds } = await this.searchService.searchRestaurantIds(
-          qTrimmed!,
-          { limit: 2000 },
-        );
-        if (meiliIds.length === 0) {
-          // Index empty / no Meili hits — fall back to DB so menu item names still match (e.g. "kottu").
-          useMeilisearch = false;
-          meiliCandidateIds = null;
-        } else {
-          // Restrict to location ids when doing "near me"
-          meiliCandidateIds =
-            locationIds.length > 0
-              ? meiliIds.filter((id) => locationIds.includes(id))
-              : meiliIds;
-          if (meiliCandidateIds.length === 0) {
-            // No Meili hits inside radius — fall back to DB text search within radius (dish names, etc.).
+        if (useMeilisearch) {
+          const { ids: meiliIds } = await this.searchService.searchRestaurantIds(
+            qTrimmed!,
+            { limit: 2000 },
+          );
+          if (meiliIds.length === 0) {
             useMeilisearch = false;
             meiliCandidateIds = null;
           } else {
-            where.id = { in: meiliCandidateIds };
+            if (strictGeo) {
+              meiliCandidateIds = meiliIds.filter((id) =>
+                locationIds.includes(id),
+              );
+              if (meiliCandidateIds.length === 0) {
+                useMeilisearch = false;
+                meiliCandidateIds = null;
+              } else {
+                where.id = { in: meiliCandidateIds };
+              }
+            } else {
+              meiliCandidateIds =
+                locationIds.length > 0
+                  ? meiliIds.filter((id) => locationIds.includes(id))
+                  : meiliIds;
+              if (meiliCandidateIds.length === 0) {
+                useMeilisearch = false;
+                meiliCandidateIds = null;
+              } else {
+                where.id = { in: meiliCandidateIds };
+              }
+            }
           }
         }
       } catch {
@@ -691,15 +829,22 @@ export class RestaurantsService implements OnModuleInit {
                   : 'trending_restaurants',
             mode: strictGeoEffective ? 'strict' : 'bias',
             sort: sortMode,
-            top10: top.map((t) => ({
-              id: t.r.id,
-              distance_km:
-                t.parts.distanceKm != null
-                  ? Number(t.parts.distanceKm.toFixed(2))
-                  : null,
-              baseSection: Number(t.parts.baseSection.toFixed(4)),
-              blend: Number(t.parts.blend.toFixed(4)),
-            })),
+            top10: top.map((t) => {
+              const row: Record<string, unknown> = {
+                id: t.r.id,
+                distance_km:
+                  t.parts.distanceKm != null
+                    ? Number(t.parts.distanceKm.toFixed(2))
+                    : null,
+                baseSection: Number(t.parts.baseSection.toFixed(4)),
+                blend: Number(t.parts.blend.toFixed(4)),
+              };
+              if (sortMode === 'top_rated') {
+                row.rating =
+                  t.r.rating != null ? Number(Number(t.r.rating).toFixed(2)) : null;
+              }
+              return row;
+            }),
           }),
         );
       }
