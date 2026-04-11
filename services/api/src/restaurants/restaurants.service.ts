@@ -100,22 +100,22 @@ function restaurantBlendParams(
   geoKind: 'bias' | 'strict',
 ): { dRef: number; wProx: number; topRatedNormMul: number } {
   if (geoKind === 'strict') {
-    // Nearby: distance-first; section signal is a tie-break within the radius.
+    // Nearby: still local, but section signal pulls weak very-close places down vs stronger nearby.
     switch (sortMode) {
       case 'popular':
-        return { dRef: 1.65, wProx: 0.9, topRatedNormMul: 2 };
+        return { dRef: 1.85, wProx: 0.83, topRatedNormMul: 2 };
       case 'top_rated':
-        return { dRef: 1.15, wProx: 0.94, topRatedNormMul: 1.8 };
+        return { dRef: 1.38, wProx: 0.86, topRatedNormMul: 2.55 };
       case 'trending':
         return { dRef: 1.45, wProx: 0.91, topRatedNormMul: 2 };
     }
   }
-  // Bias: preserve Popular; push Top Rated + Trending more local; compress star spread for Top Rated.
+  // Bias: preserve Popular; Top Rated more local without letting stars beat distance from far away.
   switch (sortMode) {
     case 'popular':
       return { dRef: 16, wProx: 0.66, topRatedNormMul: 2 };
     case 'top_rated':
-      return { dRef: 4.5, wProx: 0.9, topRatedNormMul: 2.1 };
+      return { dRef: 3.25, wProx: 0.92, topRatedNormMul: 2.35 };
     case 'trending':
       return { dRef: 9.5, wProx: 0.8, topRatedNormMul: 2 };
   }
@@ -818,19 +818,52 @@ export class RestaurantsService implements OnModuleInit {
 
       if (process.env.NODE_ENV !== 'production') {
         const top = scored.slice(0, 10);
-        this.logger.log(
-          JSON.stringify({
-            tag: 'restaurants_ranking_blend',
-            section:
-              sortMode === 'popular'
-                ? 'popular_restaurants'
-                : sortMode === 'top_rated'
-                  ? 'top_rated_restaurants'
+        const rowWithRatingBlend = (t: (typeof scored)[number]) => ({
+          id: t.r.id,
+          rating:
+            t.r.rating != null ? Number(Number(t.r.rating).toFixed(2)) : null,
+          distance_km:
+            t.parts.distanceKm != null
+              ? Number(t.parts.distanceKm.toFixed(2))
+              : null,
+          baseSection: Number(t.parts.baseSection.toFixed(4)),
+          blend: Number(t.parts.blend.toFixed(4)),
+        });
+        if (sortMode === 'top_rated' && !strictGeoEffective) {
+          this.logger.log(
+            JSON.stringify({
+              tag: 'restaurants_top_rated_bias_top10',
+              mode: 'bias',
+              top10: top.map(rowWithRatingBlend),
+            }),
+          );
+        } else if (sortMode === 'top_rated' && strictGeoEffective) {
+          this.logger.log(
+            JSON.stringify({
+              tag: 'restaurants_top_rated_strict_top10',
+              mode: 'strict',
+              top10: top.map(rowWithRatingBlend),
+            }),
+          );
+        } else if (sortMode === 'popular' && strictGeoEffective) {
+          this.logger.log(
+            JSON.stringify({
+              tag: 'restaurants_popular_strict_top10',
+              mode: 'strict',
+              top10: top.map(rowWithRatingBlend),
+            }),
+          );
+        } else {
+          this.logger.log(
+            JSON.stringify({
+              tag: 'restaurants_ranking_blend',
+              section:
+                sortMode === 'popular'
+                  ? 'popular_restaurants'
                   : 'trending_restaurants',
-            mode: strictGeoEffective ? 'strict' : 'bias',
-            sort: sortMode,
-            top10: top.map((t) => {
-              const row: Record<string, unknown> = {
+              mode: strictGeoEffective ? 'strict' : 'bias',
+              sort: sortMode,
+              top10: top.map((t) => ({
                 id: t.r.id,
                 distance_km:
                   t.parts.distanceKm != null
@@ -838,15 +871,10 @@ export class RestaurantsService implements OnModuleInit {
                     : null,
                 baseSection: Number(t.parts.baseSection.toFixed(4)),
                 blend: Number(t.parts.blend.toFixed(4)),
-              };
-              if (sortMode === 'top_rated') {
-                row.rating =
-                  t.r.rating != null ? Number(Number(t.r.rating).toFixed(2)) : null;
-              }
-              return row;
+              })),
             }),
-          }),
-        );
+          );
+        }
       }
     } else if (useMeiliRelevanceOrder && meiliCandidateIds) {
       const orderMap = new Map(meiliCandidateIds.map((id, i) => [id, i]));
