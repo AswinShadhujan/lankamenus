@@ -9,8 +9,9 @@ import { PrismaService } from '../prisma/prisma.service';
 import { SRI_LANKA_DISTRICTS } from '../locations/data/sri-lanka-districts';
 import type { DishGeoQueryDto } from './dto/dish-geo.query.dto';
 
-/** Menu-item candidates before in-memory geo blend. */
-const DISH_GEO_BLEND_POOL = 64;
+/** Candidate rows before in-memory blend — larger in bias mode so local dishes compete in the pool. */
+const DISH_STRICT_BLEND_POOL = 64;
+const DISH_BIAS_BLEND_POOL = 112;
 
 /** Unified discovery card JSON for featured + trending. */
 export type DishDiscoveryRow = {
@@ -109,11 +110,119 @@ export class DishesService {
     return { lat, lng };
   }
 
-  /** Prefer nearer rows in the SQL pool so local candidates survive before in-memory blend. */
-  private dishPoolDistanceOrderSql(useGeo: boolean): Prisma.Sql {
-    return useGeo
-      ? Prisma.sql`, rest_dist_km ASC NULLS LAST`
-      : Prisma.sql``;
+  /**
+   * Bias (lat/lng only): order nearer restaurants before global popular_score so the pool
+   * is not dominated by one distant cluster. Strict: unchanged (score then distance).
+   */
+  private dishFeaturedCandidateOrderSql(
+    strictGeo: { lat: number } | null,
+    useDishGeoBlend: boolean,
+  ): Prisma.Sql {
+    if (!useDishGeoBlend) {
+      return Prisma.sql`
+      ORDER BY
+        mi.is_popular DESC,
+        mi.is_recommended DESC,
+        r.popular_score DESC NULLS LAST,
+        mi.id ASC`;
+    }
+    if (strictGeo != null) {
+      return Prisma.sql`
+      ORDER BY
+        mi.is_popular DESC,
+        mi.is_recommended DESC,
+        r.popular_score DESC NULLS LAST,
+        rest_dist_km ASC NULLS LAST,
+        mi.id ASC`;
+    }
+    return Prisma.sql`
+      ORDER BY
+        mi.is_popular DESC,
+        mi.is_recommended DESC,
+        rest_dist_km ASC NULLS LAST,
+        r.popular_score DESC NULLS LAST,
+        mi.id ASC`;
+  }
+
+  private dishFeaturedFallbackOrderSql(
+    strictGeo: { lat: number } | null,
+    useDishGeoBlend: boolean,
+  ): Prisma.Sql {
+    if (!useDishGeoBlend) {
+      return Prisma.sql`
+      ORDER BY
+        r.rating DESC NULLS LAST,
+        r.popular_score DESC NULLS LAST,
+        mi.id ASC`;
+    }
+    if (strictGeo != null) {
+      return Prisma.sql`
+      ORDER BY
+        r.rating DESC NULLS LAST,
+        r.popular_score DESC NULLS LAST,
+        rest_dist_km ASC NULLS LAST,
+        mi.id ASC`;
+    }
+    return Prisma.sql`
+      ORDER BY
+        r.rating DESC NULLS LAST,
+        rest_dist_km ASC NULLS LAST,
+        r.popular_score DESC NULLS LAST,
+        mi.id ASC`;
+  }
+
+  private dishTrendingCandidateOrderSql(
+    strictGeo: { lat: number } | null,
+    useDishGeoBlend: boolean,
+  ): Prisma.Sql {
+    if (!useDishGeoBlend) {
+      return Prisma.sql`
+      ORDER BY
+        COALESCE(mi.click_count, 0) DESC,
+        mi.updated_at DESC,
+        mi.id ASC`;
+    }
+    if (strictGeo != null) {
+      return Prisma.sql`
+      ORDER BY
+        COALESCE(mi.click_count, 0) DESC,
+        mi.updated_at DESC,
+        rest_dist_km ASC NULLS LAST,
+        mi.id ASC`;
+    }
+    return Prisma.sql`
+      ORDER BY
+        COALESCE(mi.click_count, 0) DESC,
+        rest_dist_km ASC NULLS LAST,
+        mi.updated_at DESC,
+        mi.id ASC`;
+  }
+
+  private dishTrendingFallbackOrderSql(
+    strictGeo: { lat: number } | null,
+    useDishGeoBlend: boolean,
+  ): Prisma.Sql {
+    if (!useDishGeoBlend) {
+      return Prisma.sql`
+      ORDER BY
+        r.rating DESC NULLS LAST,
+        COALESCE(mi.click_count, 0) DESC,
+        mi.id ASC`;
+    }
+    if (strictGeo != null) {
+      return Prisma.sql`
+      ORDER BY
+        r.rating DESC NULLS LAST,
+        COALESCE(mi.click_count, 0) DESC,
+        rest_dist_km ASC NULLS LAST,
+        mi.id ASC`;
+    }
+    return Prisma.sql`
+      ORDER BY
+        r.rating DESC NULLS LAST,
+        rest_dist_km ASC NULLS LAST,
+        COALESCE(mi.click_count, 0) DESC,
+        mi.id ASC`;
   }
 
   /** km from restaurant to point — used for blended ranking (bias / strict). */
@@ -161,8 +270,8 @@ export class DishesService {
       const blend = wSec * secPart + wProx * proximity + flags;
       return { baseSection: pop, distanceKm: dist, proximity, blend };
     }
-    const dRef = 6;
-    const wProx = 0.82;
+    const dRef = 3.35;
+    const wProx = 0.9;
     const wSec = 1 - wProx;
     const proximity = this.dishProximity(dist, dRef);
     const blend = wSec * secPart + wProx * proximity + flags;
@@ -196,8 +305,8 @@ export class DishesService {
       const blend = wSec * secPart + wProx * proximity;
       return { baseSection: clicks, distanceKm: dist, proximity, blend };
     }
-    const dRef = 5.5;
-    const wProx = 0.85;
+    const dRef = 2.95;
+    const wProx = 0.92;
     const wSec = 1 - wProx;
     const proximity = this.dishProximity(dist, dRef);
     const blend = wSec * secPart + wProx * proximity;
@@ -218,30 +327,41 @@ export class DishesService {
     const top = rows.slice(0, 10);
     const section =
       kind === 'featured' ? 'featured_dishes' : 'trending_dishes';
+    const top10Payload = top.map((r) => {
+      const p =
+        kind === 'featured'
+          ? this.featuredDishBlendParts(
+              r as RawDishRow & {
+                restaurant_popular_score?: number | null;
+              },
+              geoKind,
+            )
+          : this.trendingDishBlendParts(r, geoKind);
+      return {
+        id: r.id,
+        restaurant_id: r.restaurant_id,
+        distance_km: Number(p.distanceKm.toFixed(2)),
+        baseSection: Number(p.baseSection),
+        blend: Number(p.blend.toFixed(4)),
+      };
+    });
+    if (mode === 'bias') {
+      this.logger.log(
+        JSON.stringify({
+          tag: 'dishes_bias_blend_top10',
+          section,
+          top10: top10Payload,
+        }),
+      );
+      return;
+    }
     this.logger.log(
       JSON.stringify({
         tag: 'dishes_ranking_blend',
         section,
         kind,
         mode,
-        top10: top.map((r) => {
-          const p =
-            kind === 'featured'
-              ? this.featuredDishBlendParts(
-                  r as RawDishRow & {
-                    restaurant_popular_score?: number | null;
-                  },
-                  geoKind,
-                )
-              : this.trendingDishBlendParts(r, geoKind);
-          return {
-            id: r.id,
-            restId: r.restaurant_id,
-            distance_km: Number(p.distanceKm.toFixed(2)),
-            baseSection: Number(p.baseSection),
-            blend: Number(p.blend.toFixed(4)),
-          };
-        }),
+        top10: top10Payload,
       }),
     );
   }
@@ -385,7 +505,11 @@ export class DishesService {
       : useDishGeoBlend
         ? 'bias'
         : 'none';
-    const poolLimit = useDishGeoBlend ? DISH_GEO_BLEND_POOL : 10;
+    const poolLimit = useDishGeoBlend
+      ? strictGeo != null
+        ? DISH_STRICT_BLEND_POOL
+        : DISH_BIAS_BLEND_POOL
+      : 10;
     const dishGeoKind: 'bias' | 'strict' =
       blendMode === 'strict' ? 'strict' : 'bias';
 
@@ -422,12 +546,7 @@ export class DishesService {
         AND (mi.is_popular = true OR mi.is_recommended = true)
         ${geoFilter}
         ${districtFilter}
-      ORDER BY
-        mi.is_popular DESC,
-        mi.is_recommended DESC,
-        r.popular_score DESC NULLS LAST
-        ${this.dishPoolDistanceOrderSql(useDishGeoBlend)},
-        mi.id ASC
+      ${this.dishFeaturedCandidateOrderSql(strictGeo, useDishGeoBlend)}
       LIMIT ${poolLimit}
     `);
 
@@ -458,11 +577,7 @@ export class DishesService {
           AND mi.is_available = true
           ${geoFilter}
           ${districtFilter}
-        ORDER BY
-          r.rating DESC NULLS LAST,
-          r.popular_score DESC NULLS LAST
-          ${this.dishPoolDistanceOrderSql(useDishGeoBlend)},
-          mi.id ASC
+        ${this.dishFeaturedFallbackOrderSql(strictGeo, useDishGeoBlend)}
         LIMIT ${poolLimit}
       `);
     }
@@ -526,7 +641,11 @@ export class DishesService {
       : useDishGeoBlend
         ? 'bias'
         : 'none';
-    const poolLimit = useDishGeoBlend ? DISH_GEO_BLEND_POOL : 10;
+    const poolLimit = useDishGeoBlend
+      ? strictGeo != null
+        ? DISH_STRICT_BLEND_POOL
+        : DISH_BIAS_BLEND_POOL
+      : 10;
     const dishGeoKind: 'bias' | 'strict' =
       blendMode === 'strict' ? 'strict' : 'bias';
 
@@ -561,11 +680,7 @@ export class DishesService {
         AND mi.is_available = true
         ${geoFilter}
         ${districtFilter}
-      ORDER BY
-        COALESCE(mi.click_count, 0) DESC,
-        mi.updated_at DESC
-        ${this.dishPoolDistanceOrderSql(useDishGeoBlend)},
-        mi.id ASC
+      ${this.dishTrendingCandidateOrderSql(strictGeo, useDishGeoBlend)}
       LIMIT ${poolLimit}
     `);
 
@@ -595,11 +710,7 @@ export class DishesService {
           AND mi.is_available = true
           ${geoFilter}
           ${districtFilter}
-        ORDER BY
-          r.rating DESC NULLS LAST,
-          COALESCE(mi.click_count, 0) DESC
-          ${this.dishPoolDistanceOrderSql(useDishGeoBlend)},
-          mi.id ASC
+        ${this.dishTrendingFallbackOrderSql(strictGeo, useDishGeoBlend)}
         LIMIT ${poolLimit}
       `);
     }
