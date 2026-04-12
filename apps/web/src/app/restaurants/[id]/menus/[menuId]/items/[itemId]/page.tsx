@@ -91,12 +91,12 @@ export default function DishDetailPage() {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-neutral-950 pb-8">
+      <div className="min-h-screen pb-8 transition-colors duration-200" style={{ backgroundColor: 'var(--background)' }}>
         <main className="mx-auto max-w-3xl space-y-6 px-4 py-6">
-          <Skeleton className="h-4 w-48 bg-neutral-800" />
-          <Skeleton className="h-[320px] w-full rounded-2xl bg-neutral-800" />
-          <Skeleton className="h-8 w-3/4 bg-neutral-800" />
-          <Skeleton className="h-5 w-24 bg-neutral-800" />
+          <Skeleton className="h-4 w-48" />
+          <Skeleton className="h-[320px] w-full rounded-2xl" />
+          <Skeleton className="h-8 w-3/4" />
+          <Skeleton className="h-5 w-24" />
         </main>
       </div>
     );
@@ -104,21 +104,23 @@ export default function DishDetailPage() {
 
   if (error || !dish) {
     return (
-      <div className="min-h-screen bg-neutral-950 pb-8">
+      <div className="min-h-screen pb-8 transition-colors duration-200" style={{ backgroundColor: 'var(--background)' }}>
         <main className="mx-auto max-w-3xl space-y-6 px-4 py-6">
           <ErrorState message={error ?? 'Dish not found'} />
-          <div className="flex gap-4">
+          <div className="flex flex-wrap gap-4">
             {id ? (
               <Link
                 href={`/restaurants/${id}`}
-                className="text-sm font-medium text-red-500 underline-offset-2 hover:underline"
+                className="text-sm font-medium underline-offset-2 hover:underline"
+                style={{ color: 'var(--accent-primary)' }}
               >
                 ← Back to restaurant
               </Link>
             ) : null}
             <Link
               href="/"
-              className="text-sm font-medium text-red-500 underline-offset-2 hover:underline"
+              className="text-sm font-medium underline-offset-2 hover:underline"
+              style={{ color: 'var(--accent-primary)' }}
             >
               ← Back to restaurants
             </Link>
@@ -136,21 +138,25 @@ export default function DishDetailPage() {
   const isAvailable = dish.is_available !== false;
 
   return (
-    <div className="relative min-h-screen bg-neutral-950 pb-8 text-white">
+    <div
+      className="relative min-h-screen pb-8 transition-colors duration-200"
+      style={{ backgroundColor: 'var(--background)', color: 'var(--text-primary)' }}
+    >
       <main className="mx-auto max-w-3xl space-y-6 px-4 py-6">
-        <nav className="text-sm text-gray-400">
-          <Link href="/" className="text-red-500 transition-opacity hover:opacity-80">
+        <nav className="text-sm" style={{ color: 'var(--text-secondary)' }}>
+          <Link href="/" className="transition-opacity hover:opacity-80" style={{ color: 'var(--accent-primary)' }}>
             Restaurants
           </Link>
           <span className="mx-2">/</span>
           <Link
             href={`/restaurants/${dish.restaurant_id}`}
-            className="text-red-500 transition-opacity hover:opacity-80"
+            className="transition-opacity hover:opacity-80"
+            style={{ color: 'var(--accent-primary)' }}
           >
             {dish.restaurant_name}
           </Link>
           <span className="mx-2">/</span>
-          <span className="text-white">{dish.name}</span>
+          <span style={{ color: 'var(--text-primary)' }}>{dish.name}</span>
         </nav>
 
         <div className="relative overflow-hidden rounded-2xl">
@@ -163,7 +169,10 @@ export default function DishDetailPage() {
               onError={() => setImageError(true)}
             />
           ) : (
-            <div className="flex h-[320px] w-full items-center justify-center bg-neutral-800 text-5xl opacity-40">
+            <div
+              className="flex h-[320px] w-full items-center justify-center text-5xl opacity-40"
+              style={{ backgroundColor: 'var(--border)' }}
+            >
               🍽
             </div>
           )}
@@ -200,13 +209,16 @@ export default function DishDetailPage() {
                 )}
 
                 {dish.veg ? (
-                  <span className="rounded-full border border-white/30 px-2 py-1 text-xs text-gray-200">
+                  <span
+                    className="rounded-full border px-2 py-1 text-xs text-white shadow-sm"
+                    style={{ borderColor: 'color-mix(in srgb, white 45%, transparent)', backgroundColor: 'rgba(0,0,0,0.25)' }}
+                  >
                     Vegetarian
                   </span>
                 ) : null}
               </div>
 
-              <span className="text-lg font-semibold text-orange-400">
+              <span className="text-lg font-semibold" style={{ color: 'var(--accent-secondary)' }}>
                 {priceFormatted != null ? `LKR ${priceFormatted}` : 'LKR —'}
               </span>
             </div>
@@ -214,21 +226,23 @@ export default function DishDetailPage() {
         </div>
 
         <div className="mt-6 space-y-2">
-          <h3 className="text-xs font-semibold uppercase text-gray-400">About this dish</h3>
+          <h3 className="text-xs font-semibold uppercase" style={{ color: 'var(--text-secondary)' }}>
+            About this dish
+          </h3>
 
-          <p className="text-sm text-gray-300">
+          <p className="text-sm leading-relaxed" style={{ color: 'var(--text-primary)' }}>
             {dish.description?.trim() ||
               'A delicious dish prepared with fresh ingredients and authentic flavors.'}
           </p>
         </div>
 
         {isPopular && (
-          <div className="mt-3 text-xs text-orange-400">
+          <div className="mt-3 text-xs" style={{ color: 'var(--accent-secondary)' }}>
             🔥 Frequently ordered by customers near you
           </div>
         )}
 
-        <p className="text-xs text-gray-400">
+        <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
           {dish.section} · {dish.menu_name}
         </p>
 
@@ -240,12 +254,19 @@ export default function DishDetailPage() {
 
         {ingredientParts.length > 0 && (
           <div className="space-y-2">
-            <h3 className="text-xs font-semibold uppercase text-gray-400">Ingredients</h3>
+            <h3 className="text-xs font-semibold uppercase" style={{ color: 'var(--text-secondary)' }}>
+              Ingredients
+            </h3>
             <ul className="flex flex-wrap gap-2">
               {ingredientParts.map((ing, idx) => (
                 <li
                   key={`${idx}-${ing}`}
-                  className="rounded-lg border border-white/10 bg-white/5 px-3 py-1.5 text-sm text-gray-300"
+                  className="rounded-lg border px-3 py-1.5 text-sm"
+                  style={{
+                    borderColor: 'var(--border)',
+                    backgroundColor: 'var(--surface)',
+                    color: 'var(--text-primary)',
+                  }}
                 >
                   {ing}
                 </li>
@@ -257,13 +278,16 @@ export default function DishDetailPage() {
         <button
           type="button"
           onClick={goFullMenu}
-          className="mt-6 w-full rounded-xl bg-red-500 py-3 font-medium text-white transition hover:bg-red-600"
+          className="mt-6 w-full rounded-xl py-3 font-medium text-white transition-opacity hover:opacity-95 active:opacity-90"
+          style={{ backgroundColor: 'var(--accent-primary)' }}
         >
           View Full Menu of {dish.restaurant_name}
         </button>
 
         <div className="space-y-3">
-          <h3 className="mt-8 mb-3 text-lg font-semibold text-white">More from this restaurant</h3>
+          <h3 className="mt-8 mb-3 text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>
+            More from this restaurant
+          </h3>
           <div className="space-y-3">
             {relatedItems.map((item) => (
               <DishCard

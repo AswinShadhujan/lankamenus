@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* Match app theme (ThemeProvider sets data-theme on <html>). Default Tailwind `dark:` uses prefers-color-scheme only. */
+@custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *));
+
 /* Design system: CSS variables for theming (see styles/theme.ts) */
 :root,
 [data-theme="light"] {

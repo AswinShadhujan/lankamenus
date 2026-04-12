@@ -4,7 +4,8 @@ import { useEffect, useState, useRef } from 'react';
 import api from '@/lib/api';
 import type { CombinedSearchResponse } from '@/types/search';
 
-const DEBOUNCE_MS = 300;
+/** Short debounce: feels responsive while still batching rapid keystrokes. */
+const DEBOUNCE_MS = 120;
 
 function isAbortError(err: unknown): boolean {
   if (err && typeof err === 'object' && 'code' in err) {

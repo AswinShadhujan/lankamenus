@@ -10,7 +10,8 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { HomeSectionHeader } from '@/components/home/HomeSectionHeader';
 import { HomeCategoryStrip } from '@/components/home/HomeCategoryStrip';
-import { UberEatsPill, UberEatsPillRow, UBER_EATS_ACCENT } from '@/components/ui/UberEatsPill';
+import { UberEatsPill, UberEatsPillRow } from '@/components/ui/UberEatsPill';
+import { HeroBanner } from '@/components/home/HeroBanner';
 import { HorizontalRestaurantSection } from '@/components/shared/HorizontalRestaurantSection';
 import {
   PopularDishesSection,
@@ -56,7 +57,7 @@ function SeeAllRestaurantsButton({ onClick }: { onClick: () => void }) {
       type="button"
       onClick={onClick}
       className="text-sm font-semibold transition-opacity hover:opacity-80 hover:underline"
-      style={{ color: UBER_EATS_ACCENT }}
+      style={{ color: 'var(--accent-primary)' }}
     >
       See all
     </button>
@@ -116,6 +117,8 @@ export default function HomePage() {
 
   const [districts, setDistricts] = useState<District[]>([]);
   const [selectedDistricts, setSelectedDistricts] = useState<string[]>([]);
+  /** When off, district list is cleared; when on, the dropdown is shown. */
+  const [districtFilterEnabled, setDistrictFilterEnabled] = useState(false);
   /** Single geolocation read on load — same coords for bias (default sorts) and strict Nearby. */
   const [userLocation, setUserLocation] = useState<UserLocationState>({ status: 'unknown' });
   const [locationError, setLocationError] = useState<string | null>(null);
@@ -123,7 +126,6 @@ export default function HomePage() {
   const [favouriteIds, setFavouriteIds] = useState<Set<number>>(new Set());
   const [favouriteLoadingId, setFavouriteLoadingId] = useState<number | null>(null);
   const [hasToken, setHasToken] = useState(false);
-  const [backendHealthStatus, setBackendHealthStatus] = useState<string | null>(null);
 
   const [selectedSort, setSelectedSort] = useState<HomeSortMode>('default');
   const [filterHighRating, setFilterHighRating] = useState(false);
@@ -137,37 +139,6 @@ export default function HomePage() {
 
   useEffect(() => {
     runInitialGeolocation(setUserLocation);
-  }, []);
-
-  // Test backend reachability: same base as fetch() (env or localhost :3001 fallback).
-  // Uses `cache: "no-store"` to avoid cached results across deployments.
-  useEffect(() => {
-    const apiBase = getApiBaseUrl().replace(/\/$/, '');
-    const healthUrl = `${apiBase}/health`;
-
-    if (!apiBase) {
-      setBackendHealthStatus('missing_api_url');
-      return;
-    }
-
-    let cancelled = false;
-    async function run() {
-      try {
-        const res = await fetch(healthUrl, { cache: 'no-store' });
-        const data = (await res.json()) as { status?: string };
-        if (cancelled) return;
-        setBackendHealthStatus(data?.status ?? `http_${res.status}`);
-      } catch {
-        if (cancelled) return;
-        setBackendHealthStatus('unreachable');
-      }
-    }
-
-    void run();
-
-    return () => {
-      cancelled = true;
-    };
   }, []);
 
   const locationReady = isLocationResolved(userLocation);
@@ -438,11 +409,14 @@ export default function HomePage() {
     }
   };
 
-  const toggleDistrict = (name: string) => {
-    setSelectedDistricts((prev) =>
-      prev.includes(name) ? prev.filter((d) => d !== name) : [...prev, name],
-    );
-  };
+  const setDistrictFilterOn = useCallback((on: boolean) => {
+    setDistrictFilterEnabled(on);
+    if (!on) setSelectedDistricts([]);
+  }, []);
+
+  const onDistrictSelectChange = useCallback((value: string) => {
+    setSelectedDistricts(value ? [value] : []);
+  }, []);
 
   const setCategoriesInUrl = useCallback(
     (next: string[]) => {
@@ -549,7 +523,13 @@ export default function HomePage() {
   }, [router, searchParams]);
 
   const removeDistrict = useCallback((name: string) => {
-    setSelectedDistricts((prev) => prev.filter((d) => d !== name));
+    setSelectedDistricts((prev) => {
+      const next = prev.filter((d) => d !== name);
+      if (next.length === 0) {
+        queueMicrotask(() => setDistrictFilterEnabled(false));
+      }
+      return next;
+    });
   }, []);
 
   const sortSummaryLabel =
@@ -584,12 +564,6 @@ export default function HomePage() {
 
   const displayRestaurants = ratingFilteredGrid;
 
-  const districtScopeLabel = useMemo(() => {
-    if (selectedDistricts.length === 0) return 'All Districts';
-    if (selectedDistricts.length === 1) return selectedDistricts[0];
-    return `${selectedDistricts.length} districts`;
-  }, [selectedDistricts]);
-
   const railLocationLabel = useMemo(() => {
     if (strictNearbyReady) {
       return `📍 Nearby · ${DEFAULT_RADIUS_KM} km (strict)`;
@@ -617,6 +591,7 @@ export default function HomePage() {
   const clearAllFeedFilters = () => {
     setSelectedSort('default');
     setSelectedDistricts([]);
+    setDistrictFilterEnabled(false);
     setFilterHighRating(false);
     const params = new URLSearchParams(searchParams?.toString() ?? '');
     params.delete('categories');
@@ -629,53 +604,63 @@ export default function HomePage() {
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-4 sm:px-6 sm:py-6">
-      <section
-        className="mb-4 rounded-xl border px-4 py-3"
-        style={{ borderColor: 'var(--border)', backgroundColor: 'color-mix(in srgb, var(--surface), transparent 12%)' }}
-      >
-        <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--text-secondary)' }}>
-          Backend status
-        </p>
-        <p className="mt-1 text-sm" style={{ color: 'var(--text-primary)' }}>
-          {backendHealthStatus ? `API: ${backendHealthStatus}` : 'Checking API...'}
-        </p>
+      <section className="mb-5">
+        <HeroBanner />
       </section>
-      <section className={SECTION_MB}>
-        <div
-          className="rounded-2xl border p-4 sm:p-5"
-          style={{ borderColor: 'var(--border)', backgroundColor: 'var(--surface)' }}
-        >
-          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-            <div className="min-w-0 flex-1">
-              <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--text-secondary)' }}>
-                District
-              </p>
-              <p className="mt-1 text-base font-semibold sm:text-lg" style={{ color: 'var(--text-primary)' }}>
-                {districtScopeLabel}
-              </p>
-              <p className="mt-1 max-w-xl text-xs leading-relaxed sm:text-sm" style={{ color: 'var(--text-secondary)' }}>
-                Primary location for browsing. Applies to the discovery rails and the All Restaurants list.
-              </p>
-            </div>
-            <div className="shrink-0 sm:pt-0.5">
-              <SeeAllRestaurantsButton onClick={scrollToAllRestaurants} />
-            </div>
-          </div>
-          <div className="flex gap-2 overflow-x-auto scroll-smooth pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            <UberEatsPill
-              label="All Districts"
-              selected={selectedDistricts.length === 0}
-              onClick={() => setSelectedDistricts([])}
-            />
-            {districts.map((d) => (
-              <UberEatsPill
-                key={d.id}
-                label={d.name}
-                selected={selectedDistricts.includes(d.name)}
-                onClick={() => toggleDistrict(d.name)}
+
+      <section className="mb-4">
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            role="switch"
+            aria-checked={districtFilterEnabled}
+            onClick={() => setDistrictFilterOn(!districtFilterEnabled)}
+            className="flex shrink-0 items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-primary)]"
+            style={{
+              borderColor: districtFilterEnabled ? 'var(--accent-primary)' : 'var(--border)',
+              backgroundColor: districtFilterEnabled
+                ? 'color-mix(in srgb, var(--accent-primary) 12%, transparent)'
+                : 'var(--surface)',
+              color: 'var(--text-primary)',
+            }}
+          >
+            <span
+              className="relative inline-flex h-4 w-7 shrink-0 rounded-full transition-colors"
+              style={{
+                backgroundColor: districtFilterEnabled ? 'var(--accent-primary)' : 'var(--border)',
+              }}
+              aria-hidden
+            >
+              <span
+                className="absolute top-0.5 h-3 w-3 rounded-full bg-white shadow transition-transform duration-200"
+                style={{
+                  left: districtFilterEnabled ? 'calc(100% - 0.875rem)' : '0.125rem',
+                }}
               />
-            ))}
-          </div>
+            </span>
+            <span className="whitespace-nowrap">District</span>
+          </button>
+          {districtFilterEnabled && (
+            <select
+              id="home-district-select"
+              className="min-h-[36px] min-w-0 flex-1 rounded-lg border px-2.5 py-1.5 text-sm font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-[var(--accent-primary)] sm:max-w-xs"
+              style={{
+                borderColor: 'var(--border)',
+                backgroundColor: 'var(--surface)',
+                color: 'var(--text-primary)',
+              }}
+              value={selectedDistricts[0] ?? ''}
+              onChange={(e) => onDistrictSelectChange(e.target.value)}
+              aria-label="District"
+            >
+              <option value="">All districts</option>
+              {districts.map((d) => (
+                <option key={d.id} value={d.name}>
+                  {d.name}
+                </option>
+              ))}
+            </select>
+          )}
         </div>
       </section>
 
@@ -739,7 +724,7 @@ export default function HomePage() {
         {(userLocation.status === 'denied' || userLocation.status === 'unsupported') &&
           selectedSort !== 'distance' && (
             <p className="mt-2 text-xs leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
-              Location unavailable — showing island-wide results. Use District filters, or enable location and
+              Location unavailable — showing island-wide results. Use the district filter above, or enable location and
               refresh.
             </p>
           )}
@@ -800,7 +785,7 @@ export default function HomePage() {
         />
         <HorizontalRestaurantSection
           title="🔥 Popular"
-          subtitle="Most ordered nearby"
+          subtitle="Popular picks near you"
           locationLabel={railLocationLabel}
           restaurants={popularRail}
           maxItems={RAIL_PAGE_SIZE}
@@ -826,7 +811,7 @@ export default function HomePage() {
         />
         <HorizontalRestaurantSection
           title="📈 Trending"
-          subtitle="Hot right now"
+          subtitle="Trending near you"
           locationLabel={railLocationLabel}
           restaurants={trendingRail}
           maxItems={RAIL_PAGE_SIZE}
@@ -923,7 +908,7 @@ export default function HomePage() {
                       }}
                       className="inline-flex min-h-[36px] items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors hover:opacity-90 active:opacity-80"
                       style={{
-                        borderColor: UBER_EATS_ACCENT,
+                        borderColor: 'var(--accent-primary)',
                         backgroundColor: 'color-mix(in srgb, var(--accent-primary) 10%, transparent)',
                         color: 'var(--text-primary)',
                       }}
@@ -959,7 +944,7 @@ export default function HomePage() {
                 type="button"
                 onClick={clearAllFeedFilters}
                 className="shrink-0 text-sm font-semibold underline-offset-2 transition-opacity hover:opacity-80 sm:pt-5"
-                style={{ color: UBER_EATS_ACCENT }}
+                style={{ color: 'var(--accent-primary)' }}
               >
                 Clear all
               </button>

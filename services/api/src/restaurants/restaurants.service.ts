@@ -902,6 +902,11 @@ export class RestaurantsService implements OnModuleInit {
     }
     const restaurant = await this.prisma.restaurants.findUnique({
       where: { id },
+      include: {
+        restaurant_extra_costs: {
+          orderBy: { sort_order: 'asc' },
+        },
+      },
     });
     if (!restaurant) {
       throw new NotFoundException('Restaurant not found');
@@ -918,6 +923,43 @@ export class RestaurantsService implements OnModuleInit {
       }
     }
     return restaurant;
+  }
+
+  async getExtraCosts(restaurantId: number) {
+    await this.ensureRestaurantExists(restaurantId);
+    return this.prisma.restaurant_extra_costs.findMany({
+      where: { restaurant_id: restaurantId },
+      orderBy: { sort_order: 'asc' },
+    });
+  }
+
+  async setExtraCosts(
+    restaurantId: number,
+    costs: { label: string; rate: number; sort_order?: number }[],
+  ) {
+    await this.ensureRestaurantExists(restaurantId);
+    await this.prisma.$transaction(async (tx) => {
+      await tx.restaurant_extra_costs.deleteMany({
+        where: { restaurant_id: restaurantId },
+      });
+      if (costs.length > 0) {
+        await tx.restaurant_extra_costs.createMany({
+          data: costs.map((c, i) => ({
+            restaurant_id: restaurantId,
+            label: c.label.trim(),
+            rate: c.rate,
+            sort_order: c.sort_order ?? i,
+          })),
+        });
+      }
+    });
+    await this.invalidateRestaurantCache(restaurantId);
+    return this.getExtraCosts(restaurantId);
+  }
+
+  private async ensureRestaurantExists(id: number) {
+    const count = await this.prisma.restaurants.count({ where: { id } });
+    if (count === 0) throw new NotFoundException('Restaurant not found');
   }
 
   async create(dto: CreateRestaurantDto) {

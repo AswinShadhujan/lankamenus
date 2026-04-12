@@ -1,7 +1,6 @@
 'use client';
 
 import type { ReactNode } from 'react';
-import { UBER_EATS_ACCENT } from '@/components/ui/UberEatsPill';
 
 type HomeSectionHeaderProps = {
   title: ReactNode;
@@ -42,7 +41,7 @@ export function HomeSectionHeader({
             type="button"
             onClick={onSeeAll}
             className="text-sm font-semibold transition-opacity hover:opacity-80 hover:underline"
-            style={{ color: UBER_EATS_ACCENT }}
+            style={{ color: 'var(--accent-primary)' }}
           >
             See all
           </button>

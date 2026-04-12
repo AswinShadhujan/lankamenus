@@ -2,11 +2,6 @@
 
 import type { ReactNode } from 'react';
 
-/** Uber Eats–style control accent */
-export const UBER_EATS_ACCENT = '#C30017';
-const INACTIVE_BORDER = '#333333';
-const INACTIVE_TEXT = '#cccccc';
-
 type UberEatsPillProps = {
   label: string;
   selected: boolean;
@@ -29,18 +24,18 @@ export function UberEatsPill({
       onClick={onClick}
       disabled={disabled}
       aria-pressed={selected}
-      className="shrink-0 rounded-full px-4 py-2 text-sm font-medium transition-all duration-200 enabled:hover:brightness-110 enabled:active:brightness-95 disabled:cursor-not-allowed disabled:opacity-50"
+      className="shrink-0 rounded-full px-4 py-2 text-sm font-medium transition-all duration-200 enabled:hover:opacity-90 enabled:active:opacity-80 disabled:cursor-not-allowed disabled:opacity-40"
       style={
         selected
           ? {
-              backgroundColor: UBER_EATS_ACCENT,
+              backgroundColor: 'var(--accent-primary)',
               color: '#ffffff',
               border: '1px solid transparent',
             }
           : {
-              backgroundColor: 'transparent',
-              border: `1px solid ${INACTIVE_BORDER}`,
-              color: INACTIVE_TEXT,
+              backgroundColor: 'var(--surface)',
+              border: '1px solid var(--border)',
+              color: 'var(--text-primary)',
             }
       }
     >
@@ -53,7 +48,7 @@ type UberEatsPillRowProps = {
   title: string;
   children: ReactNode;
   className?: string;
-  /** e.g. “See all” → scroll to full list */
+  /** e.g. "See all" -> scroll to full list */
   trailingAction?: ReactNode;
 };
 
@@ -69,7 +64,7 @@ export function UberEatsPillRow({
       <div className="mb-2 flex items-center justify-between gap-2">
         <p
           className="text-xs font-semibold uppercase tracking-wide"
-          style={{ color: '#999999' }}
+          style={{ color: 'var(--text-secondary)' }}
         >
           {title}
         </p>

@@ -28,16 +28,19 @@ export function Navbar({
   const pathname = usePathname();
   const { theme, toggleTheme, mounted: themeMounted } = useTheme();
   const [localQuery, setLocalQuery] = useState(searchValue);
+  /** On `/`, URL `q` is debounced in MainLayout — keep a local draft so suggestions track keystrokes immediately. */
+  const [homeDraft, setHomeDraft] = useState(searchValue);
   const [suggestOpen, setSuggestOpen] = useState(false);
   const blurCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchShellRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (pathname !== '/') setLocalQuery(searchValue);
+    if (pathname === '/') setHomeDraft(searchValue);
+    else setLocalQuery(searchValue);
   }, [pathname, searchValue]);
 
   const isHome = pathname === '/';
-  const searchDisplayValue = isHome ? searchValue : localQuery;
+  const searchDisplayValue = isHome ? homeDraft : localQuery;
 
   const clearBlurTimer = useCallback(() => {
     if (blurCloseTimer.current) {
@@ -93,6 +96,7 @@ export function Navbar({
         clearBlurTimer();
       }
       if (isHome) {
+        setHomeDraft(v);
         (onSearchChange ?? (() => {}))(v);
       } else {
         setLocalQuery(v);
@@ -101,10 +105,19 @@ export function Navbar({
     [isHome, onSearchChange, clearBlurTimer],
   );
 
+  const handleSearchShellBlurCapture = useCallback(
+    (e: React.FocusEvent) => {
+      const next = e.relatedTarget as Node | null;
+      if (next && searchShellRef.current?.contains(next)) return;
+      scheduleCloseSuggestions();
+    },
+    [scheduleCloseSuggestions],
+  );
+
   const handleSearchSubmit = (value?: string) => {
     setSuggestOpen(false);
     clearBlurTimer();
-    const submitted = (value ?? (isHome ? searchValue : localQuery)).trim();
+    const submitted = (value ?? searchDisplayValue).trim();
     onSearchSubmit?.(submitted);
   };
 
@@ -138,13 +151,13 @@ export function Navbar({
           <div
             ref={searchShellRef}
             className={`relative w-full min-w-0 ${isHome ? 'md:mx-auto md:max-w-3xl' : 'md:mx-auto md:max-w-md'}`}
+            onBlurCapture={handleSearchShellBlurCapture}
           >
             <SearchBar
               value={searchDisplayValue}
               onChange={handleSearchChangeWrapped}
               onSubmit={handleSearchSubmit}
               onFocus={openSuggestions}
-              onBlur={scheduleCloseSuggestions}
               placeholder={isHome ? 'Search dishes or restaurants' : 'Search dishes or restaurant name'}
               className="w-full"
               variant={isHome ? 'premium' : 'default'}
@@ -157,8 +170,6 @@ export function Navbar({
                 debouncing={combinedDebouncing}
                 error={combinedError}
                 onNavigate={handleDropdownNavigate}
-                onPointerEnter={openSuggestions}
-                onPointerLeave={scheduleCloseSuggestions}
               />
             )}
           </div>

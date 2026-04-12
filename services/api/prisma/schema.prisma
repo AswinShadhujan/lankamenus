@@ -57,8 +57,9 @@ model restaurants {
   popular_score   Float?                    @default(dbgenerated("(COALESCE(rating, (0)::double precision) * ln(((GREATEST(rating_count, 0) + 1))::double precision))")) @map("popular_score")
   /// * GENERATED: engagement blend — read-only in DB.
   trending_score  Float?                    @default(dbgenerated("((((COALESCE(view_count, 0))::double precision * (0.4)::double precision) + ((COALESCE(favorite_count, 0))::double precision * (0.4)::double precision)) + ((COALESCE(rating, (0)::double precision) * (GREATEST(rating_count, 0))::double precision) * (0.2)::double precision))")) @map("trending_score")
-  favourites      favourites[]
-  menus           menus[]
+  favourites            favourites[]
+  menus                 menus[]
+  restaurant_extra_costs restaurant_extra_costs[]
 
   @@index([city])
   @@index([district])
@@ -117,6 +118,19 @@ model menu_items {
   menu_section    menu_sections @relation(fields: [menu_section_id], references: [id], onDelete: Cascade)
 
   @@index([menu_section_id])
+}
+
+model restaurant_extra_costs {
+  id            Int         @id @default(autoincrement())
+  restaurant_id Int
+  label         String      @db.VarChar(100)
+  rate          Decimal     @db.Decimal(6, 3)
+  sort_order    Int         @default(0)
+  created_at    DateTime    @default(now())
+  updated_at    DateTime    @updatedAt
+  restaurant    restaurants @relation(fields: [restaurant_id], references: [id], onDelete: Cascade)
+
+  @@index([restaurant_id])
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.

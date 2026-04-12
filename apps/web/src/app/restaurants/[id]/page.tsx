@@ -18,8 +18,9 @@ import {
 } from '@/components/restaurant/RestaurantMenuExperience';
 import { RestaurantCategoryChips } from '@/components/restaurant/RestaurantCategoryChips';
 import type { Menu } from '@/types/menu';
+import { buildGoogleMapsRestaurantUrl } from '@/lib/buildGoogleMapsRestaurantUrl';
 
-type TabId = 'menu' | 'photos' | 'reviews';
+type TabId = 'menu' | 'reviews';
 
 export default function RestaurantDetailPage() {
   const params = useParams();
@@ -123,7 +124,6 @@ export default function RestaurantDetailPage() {
         <Skeleton className="mt-2 h-4 w-1/2" />
         <div className="mt-8 flex gap-2 border-b border-[var(--border)] pb-2">
           <Skeleton className="h-9 w-16 rounded-md" />
-          <Skeleton className="h-9 w-16 rounded-md" />
           <Skeleton className="h-9 w-20 rounded-md" />
         </div>
         <h2 className="mt-6 text-sm font-semibold" style={{ color: 'var(--text-secondary)' }}>
@@ -151,10 +151,10 @@ export default function RestaurantDetailPage() {
 
   const category = restaurant.cuisine_tags?.join(', ') ?? '—';
   const location = [restaurant.city, restaurant.district].filter(Boolean).join(', ');
+  const googleMapsUrl = buildGoogleMapsRestaurantUrl(restaurant);
 
   const tabs: { id: TabId; label: string }[] = [
     { id: 'menu', label: 'Menu' },
-    { id: 'photos', label: 'Photos' },
     { id: 'reviews', label: 'Reviews' },
   ];
 
@@ -213,6 +213,20 @@ export default function RestaurantDetailPage() {
               Price level: {restaurant.price_level ?? '—'} · Veg: {restaurant.veg_friendly ? 'Yes' : 'No'} · Halal:{' '}
               {restaurant.halal_certified ? 'Yes' : 'No'}
             </p>
+            <a
+              href={googleMapsUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-3 inline-flex min-h-[40px] items-center gap-2 rounded-lg border px-4 py-2 text-small font-semibold transition-opacity hover:opacity-90 active:opacity-80"
+              style={{
+                borderColor: 'var(--border)',
+                backgroundColor: 'var(--surface)',
+                color: 'var(--accent-primary)',
+              }}
+            >
+              <span aria-hidden>📍</span>
+              View on Google Maps
+            </a>
           </div>
           <div className="shrink-0">
             {hasToken ? (
@@ -236,6 +250,37 @@ export default function RestaurantDetailPage() {
           </div>
         </div>
       </header>
+
+      {restaurant.restaurant_extra_costs != null &&
+        restaurant.restaurant_extra_costs.length > 0 && (
+          <div
+            className="mb-6 rounded-xl border px-4 py-3"
+            style={{ borderColor: 'var(--border)', backgroundColor: 'var(--surface)' }}
+          >
+            <p
+              className="mb-2 text-xs font-semibold uppercase tracking-wide"
+              style={{ color: 'var(--text-secondary)' }}
+            >
+              Extra costs
+            </p>
+            <ul className="space-y-1">
+              {restaurant.restaurant_extra_costs.map((cost) => (
+                <li
+                  key={cost.id}
+                  className="flex items-center justify-between text-sm"
+                >
+                  <span style={{ color: 'var(--text-primary)' }}>{cost.label}</span>
+                  <span
+                    className="font-medium tabular-nums"
+                    style={{ color: 'var(--text-secondary)' }}
+                  >
+                    {Number(cost.rate)}%
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
       <nav className="mb-6 flex gap-1 border-b" style={{ borderColor: 'var(--border)' }}>
         {tabs.map((tab) => (
@@ -262,14 +307,6 @@ export default function RestaurantDetailPage() {
             menu={selectedMenu}
             noMenuAvailable={menus.length === 0}
           />
-        </section>
-      )}
-
-      {activeTab === 'photos' && (
-        <section>
-          <p className="text-small" style={{ color: 'var(--text-secondary)' }}>
-            Photos coming soon.
-          </p>
         </section>
       )}
 

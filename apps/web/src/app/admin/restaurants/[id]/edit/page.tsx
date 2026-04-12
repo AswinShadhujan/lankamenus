@@ -10,6 +10,7 @@ import RestaurantForm, {
   restaurantToFormValues,
   type RestaurantFormValues,
 } from '../../RestaurantForm';
+import { ExtraCostsEditor } from '@/components/admin/ExtraCostsEditor';
 
 export default function EditRestaurantPage() {
   const router = useRouter();
@@ -109,6 +110,11 @@ export default function EditRestaurantPage() {
         loading={loading}
         submitLabel="Save changes"
       />
+
+      <div className="admin-divider mt-8">
+        <h2 className="admin-heading-2 mb-4">Extra costs</h2>
+        <ExtraCostsEditor restaurantId={id} />
+      </div>
     </div>
   );
 }

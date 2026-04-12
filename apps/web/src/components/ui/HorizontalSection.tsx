@@ -8,7 +8,7 @@ import { HomeSectionHeader } from '@/components/home/HomeSectionHeader';
 
 export type HorizontalSectionProps = {
   title: string;
-  /** Muted line under title (e.g. “Most ordered nearby”). */
+  /** Muted line under title (e.g. location-aware subtitle). */
   subtitle?: string | null;
   /** Optional suffix from `getLocationLabel` — appended to subtitle line. */
   locationLabel?: string | null;

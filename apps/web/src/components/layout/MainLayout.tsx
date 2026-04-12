@@ -2,7 +2,7 @@
 
 import { usePathname, useRouter } from 'next/navigation';
 import api, { getAdminToken, clearAdminToken } from '@/lib/api';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { useHasMounted } from '@/hooks/useHasMounted';
 import { Navbar } from './Navbar';
@@ -48,11 +48,39 @@ export function MainLayout({ children }: { children: React.ReactNode }) {
   /** Defer URL `q` until after mount so SSR + first client paint match (fixes hydration with `/?q=…`). */
   const searchValue = hasMounted ? (searchParams?.get('q') ?? '') : '';
 
+  /** Avoid `router.push` on every keystroke (lags suggestions). Sync URL after idle typing. */
+  const searchUrlDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const pushHomeSearchQuery = useCallback(
+    (raw: string) => {
+      if (pathname !== '/') return;
+      const params = new URLSearchParams(searchParams?.toString() ?? '');
+      const q = raw.trim();
+      if (q) params.set('q', q);
+      else params.delete('q');
+      const query = params.toString();
+      router.push(query ? `/?${query}` : '/');
+    },
+    [pathname, router, searchParams],
+  );
+
+  const flushSearchUrlDebounce = useCallback(() => {
+    if (searchUrlDebounceRef.current) {
+      clearTimeout(searchUrlDebounceRef.current);
+      searchUrlDebounceRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => () => flushSearchUrlDebounce(), [flushSearchUrlDebounce]);
+
   const handleSearchSubmit = (value: string) => {
+    flushSearchUrlDebounce();
+    if (pathname === '/') {
+      pushHomeSearchQuery(value ?? searchValue);
+      return;
+    }
     const q = (value ?? searchValue).trim();
-    const params = new URLSearchParams(
-      pathname === '/' ? (searchParams?.toString() ?? '') : '',
-    );
+    const params = new URLSearchParams('');
     if (q) params.set('q', q);
     else params.delete('q');
     const query = params.toString();
@@ -61,11 +89,11 @@ export function MainLayout({ children }: { children: React.ReactNode }) {
 
   const handleSearchChange = (value: string) => {
     if (pathname !== '/') return;
-    const params = new URLSearchParams(searchParams?.toString() ?? '');
-    if (value.trim()) params.set('q', value);
-    else params.delete('q');
-    const query = params.toString();
-    router.push(query ? `/?${query}` : '/');
+    flushSearchUrlDebounce();
+    searchUrlDebounceRef.current = setTimeout(() => {
+      searchUrlDebounceRef.current = null;
+      pushHomeSearchQuery(value);
+    }, 280);
   };
 
   const handleLogout = () => {

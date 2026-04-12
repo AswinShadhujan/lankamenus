@@ -75,7 +75,10 @@ function DishDiscoverySkeletonRow() {
     <HorizontalScroll>
       {Array.from({ length: 6 }).map((_, i) => (
         <div key={i} className="w-[260px] shrink-0 snap-start">
-          <div className="overflow-hidden rounded-2xl border border-white/5 bg-[#111] shadow-md">
+          <div
+            className="overflow-hidden rounded-2xl border shadow-md"
+            style={{ borderColor: 'var(--border)', backgroundColor: 'var(--surface)' }}
+          >
             <Skeleton className="h-[160px] w-full rounded-none" />
             <div className="space-y-2 p-3">
               <Skeleton className="h-4 w-[90%]" />
@@ -155,7 +158,7 @@ export function DishDiscoveryRailSection({
     const emptyCopy = strictNearby
       ? 'No dishes in this area yet. Try a different location or browse by district.'
       : biasOnly
-        ? 'No dishes match your location bias yet. Try a district filter or check back later.'
+        ? 'No dishes found for your area yet. Try a district filter or check back later.'
         : 'No dishes in the selected district yet. Try All Districts or pick another district.';
     return (
       <section className="scroll-mt-4">
@@ -210,7 +213,8 @@ export function DishDiscoveryRailSection({
                   >
                     <Link
                       href={href}
-                      className="group relative block overflow-hidden rounded-2xl border border-white/5 bg-[#111] shadow-md outline-none transition-all duration-300 hover:scale-[1.03] hover:shadow-xl focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)]"
+                      className="group relative block overflow-hidden rounded-2xl border shadow-md outline-none transition-all duration-300 hover:scale-[1.03] hover:shadow-xl focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)]"
+                      style={{ borderColor: 'var(--border)', backgroundColor: 'var(--surface)' }}
                     >
                       <div className="relative h-[160px] overflow-hidden">
                         {img ? (
@@ -224,7 +228,8 @@ export function DishDiscoveryRailSection({
                           />
                         ) : (
                           <div
-                            className="flex h-full w-full items-center justify-center bg-neutral-800 text-3xl opacity-50"
+                            className="flex h-full w-full items-center justify-center text-3xl opacity-50"
+                            style={{ backgroundColor: 'var(--border)' }}
                             aria-hidden
                           >
                             🍽
@@ -234,13 +239,20 @@ export function DishDiscoveryRailSection({
                         {imageBadge}
                       </div>
                       <div className="space-y-1 p-3">
-                        <h3 className="line-clamp-2 text-sm font-medium leading-tight text-white">
+                        <h3
+                          className="line-clamp-2 text-sm font-medium leading-tight"
+                          style={{ color: 'var(--text-primary)' }}
+                        >
                           {d.name}
                         </h3>
                         {priceStr != null ? (
-                          <p className="text-sm font-semibold text-orange-400">{priceStr}</p>
+                          <p className="text-sm font-semibold" style={{ color: 'var(--accent-secondary)' }}>
+                            {priceStr}
+                          </p>
                         ) : null}
-                        <p className="truncate text-xs text-gray-400">{d.restaurant.name}</p>
+                        <p className="truncate text-xs" style={{ color: 'var(--text-secondary)' }}>
+                          {d.restaurant.name}
+                        </p>
                       </div>
                     </Link>
                   </div>
@@ -264,7 +276,7 @@ export function PopularDishesSection(
     <DishDiscoveryRailSection
       {...props}
       title="🔥 Popular Dishes"
-      sectionSubtitle="Customer favourites"
+      sectionSubtitle="Standout picks from menus"
       apiPath="/dishes/featured"
       badgeMode="popular"
     />
@@ -281,7 +293,7 @@ export function TrendingDishesSection(
     <DishDiscoveryRailSection
       {...props}
       title="⚡ Trending Now"
-      sectionSubtitle="Hot right now"
+      sectionSubtitle="Getting noticed on menus"
       apiPath="/dishes/trending"
       badgeMode="trending"
     />

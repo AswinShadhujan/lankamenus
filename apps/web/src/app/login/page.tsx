@@ -4,33 +4,47 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import api, { setAdminToken } from '@/lib/api';
+import { mapAuthApiError, validateLoginClient, type AuthFieldErrors } from '@/lib/authForm';
+import { AuthFormErrorBanner } from '@/components/auth/AuthFormErrorBanner';
 
 export default function LoginPage() {
   const router = useRouter();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState<string | null>(null);
+  const [fieldErrors, setFieldErrors] = useState<AuthFieldErrors>({});
+  const [apiError, setApiError] = useState<string | string[] | null>(null);
   const [loading, setLoading] = useState(false);
+
+  const clearFieldError = (field: keyof AuthFieldErrors) => {
+    setFieldErrors((prev) => {
+      const next = { ...prev };
+      delete next[field];
+      return next;
+    });
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError(null);
+    setApiError(null);
+    setFieldErrors({});
+
+    const client = validateLoginClient(email, password);
+    if (client) {
+      setFieldErrors(client);
+      return;
+    }
+
     setLoading(true);
     try {
       const { data } = await api.post<{ accessToken: string; user: { id: number; email: string; role: string } }>(
         '/auth/login',
-        { email, password },
+        { email: email.trim(), password },
       );
       setAdminToken(data.accessToken);
       router.push('/');
       router.refresh();
     } catch (err: unknown) {
-      const msg =
-        err && typeof err === 'object' && 'response' in err
-          ? (err as { response?: { data?: { message?: string | string[] } } }).response?.data?.message
-          : null;
-      const message = Array.isArray(msg) ? msg[0] : msg;
-      setError(message || 'Login failed. Check your email and password.');
+      setApiError(mapAuthApiError(err, 'login'));
     } finally {
       setLoading(false);
     }
@@ -45,8 +59,12 @@ export default function LoginPage() {
         className="w-full max-w-sm rounded-xl p-6 shadow-sm"
         style={{ backgroundColor: 'var(--background)', border: '1px solid var(--border)' }}
       >
-        <h1 className="text-h2 mb-4" style={{ color: 'var(--text-primary)' }}>Log in</h1>
-        <form onSubmit={handleSubmit} className="space-y-4">
+        <h1 className="text-h2 mb-4" style={{ color: 'var(--text-primary)' }}>
+          Log in
+        </h1>
+        <form onSubmit={handleSubmit} className="space-y-4" noValidate aria-busy={loading}>
+          <AuthFormErrorBanner message={apiError} />
+
           <div>
             <label htmlFor="email" className="mb-1 block text-small font-medium" style={{ color: 'var(--text-primary)' }}>
               Email
@@ -54,13 +72,29 @@ export default function LoginPage() {
             <input
               id="email"
               type="email"
+              name="email"
               value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              className="w-full rounded-lg border px-3 py-2 transition-colors"
-              style={{ borderColor: 'var(--border)', backgroundColor: 'var(--surface)', color: 'var(--text-primary)' }}
+              onChange={(e) => {
+                setEmail(e.target.value);
+                clearFieldError('email');
+                setApiError(null);
+              }}
               autoComplete="email"
+              aria-invalid={!!fieldErrors.email}
+              aria-describedby={fieldErrors.email ? 'email-error' : undefined}
+              disabled={loading}
+              className="w-full rounded-lg border px-3 py-2 transition-colors disabled:opacity-60"
+              style={{
+                borderColor: fieldErrors.email ? 'rgb(220, 38, 38)' : 'var(--border)',
+                backgroundColor: 'var(--surface)',
+                color: 'var(--text-primary)',
+              }}
             />
+            {fieldErrors.email ? (
+              <p id="email-error" className="mt-1 text-small text-red-600 dark:text-red-400" role="alert">
+                {fieldErrors.email}
+              </p>
+            ) : null}
           </div>
           <div>
             <label htmlFor="password" className="mb-1 block text-small font-medium" style={{ color: 'var(--text-primary)' }}>
@@ -69,19 +103,30 @@ export default function LoginPage() {
             <input
               id="password"
               type="password"
+              name="password"
               value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              className="w-full rounded-lg border px-3 py-2 transition-colors"
-              style={{ borderColor: 'var(--border)', backgroundColor: 'var(--surface)', color: 'var(--text-primary)' }}
+              onChange={(e) => {
+                setPassword(e.target.value);
+                clearFieldError('password');
+                setApiError(null);
+              }}
               autoComplete="current-password"
+              aria-invalid={!!fieldErrors.password}
+              aria-describedby={fieldErrors.password ? 'password-error' : undefined}
+              disabled={loading}
+              className="w-full rounded-lg border px-3 py-2 transition-colors disabled:opacity-60"
+              style={{
+                borderColor: fieldErrors.password ? 'rgb(220, 38, 38)' : 'var(--border)',
+                backgroundColor: 'var(--surface)',
+                color: 'var(--text-primary)',
+              }}
             />
+            {fieldErrors.password ? (
+              <p id="password-error" className="mt-1 text-small text-red-600 dark:text-red-400" role="alert">
+                {fieldErrors.password}
+              </p>
+            ) : null}
           </div>
-          {error && (
-            <p className="text-small" style={{ color: 'var(--accent-primary)' }} role="alert">
-              {error}
-            </p>
-          )}
           <button
             type="submit"
             disabled={loading}

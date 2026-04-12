@@ -24,6 +24,7 @@ import {
 } from './dto/search-restaurants.dto';
 import { CreateRestaurantDto } from './dto/create-restaurant.dto';
 import { UpdateRestaurantDto } from './dto/update-restaurant.dto';
+import { SetExtraCostsDto } from './dto/set-extra-costs.dto';
 import { GooglePlacesService } from '../integrations/google/google-places.service';
 import { MenusService } from '../menus/menus.service';
 
@@ -112,5 +113,22 @@ export class RestaurantsController {
   @HttpCode(HttpStatus.NO_CONTENT)
   async deleteRestaurant(@Param('id', ParseIntPipe) id: number): Promise<void> {
     await this.restaurantsService.delete(id);
+  }
+
+  @Public()
+  @Get(':id/extra-costs')
+  getExtraCosts(@Param('id', ParseIntPipe) id: number) {
+    return this.restaurantsService.getExtraCosts(id);
+  }
+
+  /** Replace all extra costs for a restaurant (idempotent). */
+  @Roles(Role.ADMIN)
+  @UseGuards(RolesGuard)
+  @Patch(':id/extra-costs')
+  setExtraCosts(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: SetExtraCostsDto,
+  ) {
+    return this.restaurantsService.setExtraCosts(id, dto.costs);
   }
 }

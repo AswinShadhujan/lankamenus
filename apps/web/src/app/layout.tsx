@@ -51,6 +51,14 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
+      <head>
+        {/* Set theme before paint so CSS variables + Tailwind `dark:` match stored preference (avoids OS/light mismatch). */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var k='lankamenus-theme';var s=localStorage.getItem(k);var dark=s==='dark'||(s!=='light'&&window.matchMedia('(prefers-color-scheme: dark)').matches);document.documentElement.setAttribute('data-theme',dark?'dark':'light');}catch(e){}})();`,
+          }}
+        />
+      </head>
       <body className={`${inter.variable} font-sans antialiased`}>
         <ThemeProvider>
           <Suspense

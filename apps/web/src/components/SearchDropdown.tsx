@@ -195,8 +195,6 @@ export type SearchDropdownProps = {
   debouncing: boolean;
   error: string | null;
   onNavigate?: () => void;
-  onPointerEnter?: () => void;
-  onPointerLeave?: () => void;
 };
 
 function SearchDropdownInner({
@@ -206,8 +204,6 @@ function SearchDropdownInner({
   debouncing,
   error,
   onNavigate,
-  onPointerEnter,
-  onPointerLeave,
 }: SearchDropdownProps) {
   const q = query.trim();
   const showSkeleton = debouncing || loading;
@@ -224,8 +220,7 @@ function SearchDropdownInner({
       }}
       role="listbox"
       aria-label="Search suggestions"
-      onMouseEnter={onPointerEnter}
-      onMouseLeave={onPointerLeave}
+      onMouseDown={(e) => e.preventDefault()}
     >
       {showSkeleton && <SkeletonRows />}
 

@@ -4,6 +4,9 @@ export interface Restaurant {
   city?: string;
   district?: string;
   address_line1?: string;
+  /** From API when stored (drives maps + distance features). */
+  latitude?: number | null;
+  longitude?: number | null;
   cuisine_tags: string[];
   price_level?: number;
   veg_friendly: boolean;
@@ -18,6 +21,16 @@ export interface Restaurant {
   view_count?: number | null;
   favorite_count?: number | null;
   photo_reference?: string | null;
+  /** Included by GET /restaurants/:id (findOne). */
+  restaurant_extra_costs?: RestaurantExtraCost[];
+}
+
+export interface RestaurantExtraCost {
+  id: number;
+  label: string;
+  /** Percentage as a string or number (Prisma Decimal). */
+  rate: string | number;
+  sort_order: number;
 }
 
 export interface District {
