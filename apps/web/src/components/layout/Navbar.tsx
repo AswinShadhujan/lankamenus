@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
+import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { useTheme } from '@/components/ThemeProvider';
 import { SearchBar } from '@/components/ui/SearchBar';
@@ -138,10 +139,19 @@ export function Navbar({
       >
         <Link
           href="/"
-          className="order-1 shrink-0 text-h2 transition-opacity hover:opacity-80"
+          className="order-1 flex min-w-0 shrink-0 items-center gap-2 text-h2 transition-opacity hover:opacity-90 active:opacity-80 sm:gap-3"
           style={{ color: 'var(--text-primary)' }}
         >
-          Lankamenus
+          <Image
+            src="/logo.png"
+            alt="Lankamenus"
+            width={128}
+            height={32}
+            className="h-7 w-auto max-h-8 shrink-0 bg-transparent object-contain object-left sm:h-8"
+            placeholder="empty"
+            priority
+          />
+          <span className="min-w-0 truncate font-semibold tracking-tight">Lankamenus</span>
         </Link>
 
         <div
