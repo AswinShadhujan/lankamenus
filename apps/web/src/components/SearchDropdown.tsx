@@ -152,7 +152,11 @@ function RestaurantRow({
         style={{ WebkitTapHighlightColor: 'transparent' }}
       >
         <RestaurantPhotoImage
-          restaurant={{ id: r.id, photo_reference: r.photo_reference ?? null }}
+          restaurant={{
+            id: r.id,
+            photo_reference: r.photo_reference ?? null,
+            media_asset: r.media_asset ?? null,
+          }}
           alt=""
           className="h-12 w-12 shrink-0 rounded-xl object-cover"
         />

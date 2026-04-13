@@ -8,16 +8,19 @@ import {
 } from '@/lib/restaurant-photo';
 
 type RestaurantPhotoImageProps = {
-  restaurant: { id: number; photo_reference?: string | null };
+  restaurant: {
+    id: number;
+    photo_reference?: string | null;
+    media_asset?: { secure_url?: string | null } | null;
+  };
   className?: string;
   alt?: string;
 };
 
-type LoadMode = 'proxy' | 'placeholder' | 'solid';
+type LoadMode = 'direct' | 'proxy' | 'placeholder' | 'solid';
 
 /**
- * Loads the Google Places photo via the API proxy (`GET /restaurants/:id/photo`).
- * If there is no `photo_reference`, skips the proxy (would 404) and shows the placeholder.
+ * Cover image: managed media (Cloudinary / external URL) first, else Google Places proxy, else placeholder.
  */
 export function RestaurantPhotoImage({
   restaurant,
@@ -25,17 +28,24 @@ export function RestaurantPhotoImage({
   alt = '',
 }: RestaurantPhotoImageProps) {
   const apiBase = getApiBaseUrl();
-  const hasPhoto = hasRestaurantPhoto(restaurant);
-  const canUseProxy = hasPhoto && apiBase.length > 0;
+  const directUrl = restaurant.media_asset?.secure_url?.trim() ?? '';
+  const hasGoogle = Boolean(restaurant.photo_reference?.trim());
+  const canUseProxy = hasGoogle && apiBase.length > 0;
   const proxyUrl = canUseProxy
     ? `${apiBase.replace(/\/$/, '')}/restaurants/${restaurant.id}/photo`
     : '';
 
-  const [mode, setMode] = useState<LoadMode>(() => (canUseProxy ? 'proxy' : 'placeholder'));
+  const [mode, setMode] = useState<LoadMode>(() => {
+    if (directUrl) return 'direct';
+    if (canUseProxy) return 'proxy';
+    return 'placeholder';
+  });
 
   useEffect(() => {
-    setMode(canUseProxy ? 'proxy' : 'placeholder');
-  }, [restaurant.id, restaurant.photo_reference, canUseProxy]);
+    if (directUrl) setMode('direct');
+    else if (canUseProxy) setMode('proxy');
+    else setMode('placeholder');
+  }, [restaurant.id, restaurant.photo_reference, restaurant.media_asset?.secure_url, canUseProxy, directUrl]);
 
   if (mode === 'solid') {
     return (
@@ -43,6 +53,17 @@ export function RestaurantPhotoImage({
         className={className}
         style={{ backgroundColor: 'var(--border)' }}
         aria-hidden
+      />
+    );
+  }
+
+  if (mode === 'direct' && directUrl) {
+    return (
+      <img
+        src={directUrl}
+        alt={alt}
+        className={className}
+        onError={() => setMode(canUseProxy ? 'proxy' : 'placeholder')}
       />
     );
   }

@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import api, { resolvePublicMediaUrl } from '@/lib/api';
+import api from '@/lib/api';
+import { resolveDishDisplayImageUrl } from '@/lib/dish-image';
 import { parseIngredientParts } from '@/lib/menu-ingredients';
 import { DishDetail, type Menu, type MenuItem } from '@/types/menu';
 import { RatingBadge } from '@/components/ui/RatingBadge';
@@ -131,7 +132,7 @@ export default function DishDetailPage() {
   }
 
   const priceFormatted = formatPrice(dish.price);
-  const resolvedImage = resolvePublicMediaUrl(dish.image_url);
+  const resolvedImage = resolveDishDisplayImageUrl(dish);
   const imageSrc = resolvedImage && !imageError ? resolvedImage : null;
   const isPopular = !!dish.is_popular;
   const isRecommended = !!dish.is_recommended;
@@ -296,7 +297,7 @@ export default function DishDetailPage() {
                 description={item.description}
                 price={item.price}
                 veg={item.veg}
-                imageUrl={item.image_url}
+                imageUrl={resolveDishDisplayImageUrl(item)}
                 href={`/restaurants/${dish.restaurant_id}/menus/${menuId}/items/${item.id}`}
                 restaurantId={String(dish.restaurant_id)}
                 menuId={String(menuId)}

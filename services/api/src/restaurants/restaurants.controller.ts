@@ -14,7 +14,11 @@ import {
   NotFoundException,
   UseGuards,
   Res,
+  UseInterceptors,
+  UploadedFile,
+  BadRequestException,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import type { Response } from 'express';
 
 import { RestaurantsService } from './restaurants.service';
@@ -27,11 +31,16 @@ import { UpdateRestaurantDto } from './dto/update-restaurant.dto';
 import { SetExtraCostsDto } from './dto/set-extra-costs.dto';
 import { GooglePlacesService } from '../integrations/google/google-places.service';
 import { MenusService } from '../menus/menus.service';
+import { CloudinaryService } from '../cloudinary/cloudinary.service';
+import { SetRestaurantImageUrlDto } from './dto/set-restaurant-image-url.dto';
 
 import { Public } from '../auth/public.decorator';
 import { Roles } from '../auth/roles.decorator';
 import { Role } from '../auth/roles.enum';
 import { RolesGuard } from '../auth/roles.guard';
+
+const MAX_COVER_IMAGE_BYTES = 5 * 1024 * 1024;
+const ALLOWED_COVER_MIME = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
 
 @Controller('restaurants')
 export class RestaurantsController {
@@ -41,6 +50,7 @@ export class RestaurantsController {
     private readonly restaurantsService: RestaurantsService,
     private readonly googlePlacesService: GooglePlacesService,
     private readonly menusService: MenusService,
+    private readonly cloudinary: CloudinaryService,
   ) {}
 
   // 🔓 Public browsing (no auth required)
@@ -75,12 +85,57 @@ export class RestaurantsController {
     @Res() res: Response,
   ): Promise<void> {
     const restaurant = await this.restaurantsService.findOne(id);
+    const cover = (restaurant as { media_asset?: { secure_url?: string | null } | null })
+      .media_asset?.secure_url?.trim();
+    if (cover) {
+      res.redirect(302, cover);
+      return;
+    }
     const ref = (restaurant as { photo_reference?: string | null }).photo_reference;
     if (!ref?.trim() || !this.googlePlacesService.isConfigured()) {
       throw new NotFoundException('Photo not available');
     }
     const photoUrl = this.googlePlacesService.getPhotoUrl(ref, 800);
     res.redirect(302, photoUrl);
+  }
+
+  @Roles(Role.ADMIN)
+  @UseGuards(RolesGuard)
+  @Post(':id/image')
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: { fileSize: MAX_COVER_IMAGE_BYTES },
+    }),
+  )
+  uploadCoverImage(
+    @Param('id', ParseIntPipe) id: number,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    this.cloudinary.assertUploadAllowed();
+    if (!file) throw new BadRequestException('No file uploaded');
+    if (!ALLOWED_COVER_MIME.includes(file.mimetype)) {
+      throw new BadRequestException(
+        `Unsupported file type. Allowed: ${ALLOWED_COVER_MIME.join(', ')}`,
+      );
+    }
+    if (file.size > MAX_COVER_IMAGE_BYTES) {
+      throw new BadRequestException('File too large (max 5 MB)');
+    }
+    return this.restaurantsService.replaceRestaurantCoverFromUpload(
+      id,
+      file.buffer,
+      file.mimetype,
+    );
+  }
+
+  @Roles(Role.ADMIN)
+  @UseGuards(RolesGuard)
+  @Patch(':id/image-url')
+  setCoverImageUrl(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() dto: SetRestaurantImageUrlDto,
+  ) {
+    return this.restaurantsService.replaceRestaurantCoverFromExternalUrl(id, dto.imageUrl);
   }
 
   @Public()

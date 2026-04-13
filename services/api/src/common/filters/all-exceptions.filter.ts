@@ -7,7 +7,16 @@ import {
   Logger,
 } from '@nestjs/common';
 import { HttpAdapterHost } from '@nestjs/core';
-import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
+import {
+  PrismaClientKnownRequestError,
+  PrismaClientInitializationError,
+} from '@prisma/client/runtime/library';
+
+/** Transient DB / proxy issues (Railway, etc.) — tell clients to retry instead of masking as 500. */
+const DATABASE_UNAVAILABLE_MESSAGE =
+  'Database is temporarily unreachable. Wait a few seconds and try again. If this persists, check that Postgres is running and DATABASE_URL is correct.';
+
+const TRANSIENT_DB_ERROR_CODES = new Set(['P1001', 'P1002', 'P1017']);
 
 @Catch()
 export class AllExceptionsFilter implements ExceptionFilter {
@@ -40,6 +49,19 @@ export class AllExceptionsFilter implements ExceptionFilter {
           `HTTP ${statusCode}: ${Array.isArray(message) ? message.join(', ') : message}`,
         );
       }
+    } else if (exception instanceof PrismaClientInitializationError) {
+      statusCode = HttpStatus.SERVICE_UNAVAILABLE;
+      body = { statusCode, message: DATABASE_UNAVAILABLE_MESSAGE };
+      this.logger.error(exception);
+    } else if (
+      exception instanceof PrismaClientKnownRequestError &&
+      TRANSIENT_DB_ERROR_CODES.has(exception.code)
+    ) {
+      statusCode = HttpStatus.SERVICE_UNAVAILABLE;
+      body = { statusCode, message: DATABASE_UNAVAILABLE_MESSAGE };
+      this.logger.warn(
+        `Database connection issue (${exception.code}): ${exception.message}`,
+      );
     } else if (
       exception instanceof PrismaClientKnownRequestError &&
       exception.code === 'P2025'

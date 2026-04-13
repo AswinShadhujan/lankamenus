@@ -21,6 +21,13 @@ export interface Restaurant {
   view_count?: number | null;
   favorite_count?: number | null;
   photo_reference?: string | null;
+  media_asset_id?: number | null;
+  /** Primary cover when set (Cloudinary or external URL). */
+  media_asset?: {
+    id: number;
+    source_type?: string;
+    secure_url: string;
+  } | null;
   /** Included by GET /restaurants/:id (findOne). */
   restaurant_extra_costs?: RestaurantExtraCost[];
 }

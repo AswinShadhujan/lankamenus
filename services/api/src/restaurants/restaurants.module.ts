@@ -6,9 +6,10 @@ import { CacheModule } from '../cache/cache.module';
 import { GoogleModule } from '../integrations/google/google.module';
 import { RankingModule } from '../ranking/ranking.module';
 import { MenusModule } from '../menus/menus.module';
+import { MediaModule } from '../media/media.module';
 
 @Module({
-  imports: [SearchModule, CacheModule, GoogleModule, RankingModule, MenusModule],
+  imports: [SearchModule, CacheModule, GoogleModule, RankingModule, MenusModule, MediaModule],
   controllers: [RestaurantsController],
   providers: [RestaurantsService],
   exports: [RestaurantsService],

@@ -44,6 +44,8 @@ model restaurants {
   longitude       Float?                    @map("longitude")
   rating          Float?                    @map("rating")
   photo_reference String?                   @map("photo_reference")
+  /** Primary cover image: Cloudinary upload or external URL via media_assets. */
+  media_asset_id  Int?                      @map("media_asset_id")
   category        String?                   @map("category")
   updated_at      DateTime?                 @updatedAt @map("updated_at")
   slug            String?                   @unique @map("slug")
@@ -60,6 +62,8 @@ model restaurants {
   favourites            favourites[]
   menus                 menus[]
   restaurant_extra_costs restaurant_extra_costs[]
+  media_asset           media_assets?       @relation(fields: [media_asset_id], references: [id], onDelete: SetNull)
+  homepage_banners      homepage_banners[]
 
   @@index([city])
   @@index([district])
@@ -112,12 +116,16 @@ model menu_items {
   /// Dish detail views; used by GET /dishes/trending and incremented in MenusService.findOneItem.
   click_count     Int           @default(0) @map("click_count")
   image_url       String?       @map("image_url")
+  /** Primary dish image: Cloudinary upload or external URL via media_assets. */
+  media_asset_id  Int?          @map("media_asset_id")
   is_available    Boolean       @default(true) @map("is_available")
   is_popular      Boolean       @default(false) @map("is_popular")
   is_recommended  Boolean       @default(false) @map("is_recommended")
   menu_section    menu_sections @relation(fields: [menu_section_id], references: [id], onDelete: Cascade)
+  media_asset     media_assets? @relation(fields: [media_asset_id], references: [id], onDelete: SetNull)
 
   @@index([menu_section_id])
+  @@index([media_asset_id])
 }
 
 model restaurant_extra_costs {
@@ -175,6 +183,56 @@ model favourites {
   user          users       @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
   @@unique([user_id, restaurant_id])
+}
+
+model media_assets {
+  id          Int      @id @default(autoincrement())
+  /// `cloudinary` | `external_url`
+  source_type String   @default("cloudinary") @db.VarChar(20)
+  /// Legacy mirror of storage kind; prefer source_type.
+  provider    String   @default("cloudinary") @db.VarChar(30)
+  public_id   String?  @db.VarChar(255)
+  secure_url  String
+  width       Int?
+  height      Int?
+  format      String?  @db.VarChar(20)
+  mime_type   String?  @db.VarChar(100)
+  alt_text    String?  @db.VarChar(255)
+  created_at  DateTime @default(now())
+  updated_at  DateTime @updatedAt
+
+  homepage_banners homepage_banners[]
+  restaurants      restaurants[]
+  menu_items         menu_items[]
+
+  @@index([public_id])
+  @@index([source_type])
+}
+
+model homepage_banners {
+  id             Int          @id @default(autoincrement())
+  title          String       @db.VarChar(200)
+  subtitle       String?      @db.VarChar(500)
+  cta_label      String?      @db.VarChar(100)
+  /// restaurants_list | restaurant_detail | cuisine | custom_url
+  cta_type       String?      @db.VarChar(30)
+  cta_url        String?      @db.VarChar(500)
+  restaurant_id  Int?
+  cuisine_key    String?      @db.VarChar(100)
+  media_asset_id Int?
+  overlay_color  String?      @db.VarChar(30)
+  sort_order     Int          @default(0)
+  is_active      Boolean      @default(true)
+  starts_at      DateTime?
+  ends_at        DateTime?
+  created_at     DateTime     @default(now())
+  updated_at     DateTime     @updatedAt
+  media_asset    media_assets? @relation(fields: [media_asset_id], references: [id], onDelete: SetNull)
+  restaurant     restaurants?  @relation(fields: [restaurant_id], references: [id], onDelete: SetNull)
+
+  @@index([is_active, sort_order])
+  @@index([cta_type])
+  @@index([restaurant_id])
 }
 
 /// Checkpoint for resumable restaurant import (tile-based). Completed tiles are skipped on resume.

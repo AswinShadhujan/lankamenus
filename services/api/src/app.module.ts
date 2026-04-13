@@ -13,6 +13,9 @@ import { DishesModule } from './dishes/dishes.module';
 import { CacheModule } from './cache/cache.module';
 import { GoogleModule } from './integrations/google/google.module';
 import { StorageModule } from './storage/storage.module';
+import { CloudinaryModule } from './cloudinary/cloudinary.module';
+import { MediaModule } from './media/media.module';
+import { BannersModule } from './banners/banners.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { CombinedSearchController } from './restaurants/combined-search.controller';
@@ -39,6 +42,9 @@ import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
     CacheModule,
     GoogleModule,
     StorageModule,
+    CloudinaryModule,
+    MediaModule,
+    BannersModule,
     AuthModule,
     FavouritesModule,
   ],

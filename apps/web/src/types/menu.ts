@@ -14,6 +14,8 @@ export interface MenuItem {
   rating?: number | null;
   rating_count?: number | null;
   image_url?: string | null;
+  media_asset_id?: number | null;
+  media_asset?: { id: number; source_type?: string; secure_url: string } | null;
 }
 
 export interface MenuSection {
@@ -61,6 +63,8 @@ export interface DishDetail {
   rating: number | null;
   rating_count: number;
   image_url: string | null;
+  media_asset?: { id: number; source_type?: string; secure_url: string } | null;
+  display_image_url?: string | null;
   menu_section_id: number;
   section_name: string;
   section: string;

@@ -12,6 +12,7 @@ import { HomeSectionHeader } from '@/components/home/HomeSectionHeader';
 import { HomeCategoryStrip } from '@/components/home/HomeCategoryStrip';
 import { UberEatsPill, UberEatsPillRow } from '@/components/ui/UberEatsPill';
 import { HeroBanner } from '@/components/home/HeroBanner';
+import { useBanners } from '@/hooks/useBanners';
 import { HorizontalRestaurantSection } from '@/components/shared/HorizontalRestaurantSection';
 import {
   PopularDishesSection,
@@ -92,6 +93,7 @@ export default function HomePage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const hasMounted = useHasMounted();
+  const apiSlides = useBanners();
   /** After mount: matches URL (navbar). Before mount: empty so SSR matches first client paint. */
   const urlQuery = hasMounted ? (searchParams?.get('q') ?? '') : '';
   /** Category filter from URL: `?categories=Kottu,Biryani` */
@@ -604,9 +606,11 @@ export default function HomePage() {
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-4 sm:px-6 sm:py-6">
-      <section className="mb-5">
-        <HeroBanner />
-      </section>
+      {apiSlides != null && apiSlides.length > 0 ? (
+        <section className="mb-5">
+          <HeroBanner slides={apiSlides} />
+        </section>
+      ) : null}
 
       <section className="mb-4">
         <div className="flex items-center gap-3">

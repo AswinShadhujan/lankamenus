@@ -19,8 +19,22 @@ import {
 import { RestaurantCategoryChips } from '@/components/restaurant/RestaurantCategoryChips';
 import type { Menu } from '@/types/menu';
 import { buildGoogleMapsRestaurantUrl } from '@/lib/buildGoogleMapsRestaurantUrl';
+import { resolveBannerHref } from '@/lib/banner-cta';
+import { resolvePublicMediaUrl } from '@/lib/api';
 
 type TabId = 'menu' | 'reviews';
+
+type RestaurantPromoBanner = {
+  id: number;
+  title: string;
+  subtitle: string | null;
+  cta_label: string | null;
+  cta_type: 'restaurants_list' | 'restaurant_detail' | 'cuisine' | 'custom_url' | null;
+  cta_url: string | null;
+  restaurant_id: number | null;
+  cuisine_key: string | null;
+  media_asset: { secure_url: string } | null;
+};
 
 export default function RestaurantDetailPage() {
   const params = useParams();
@@ -35,6 +49,7 @@ export default function RestaurantDetailPage() {
   const [hasToken, setHasToken] = useState(false);
   const [isFavourite, setIsFavourite] = useState(false);
   const [favouriteLoading, setFavouriteLoading] = useState(false);
+  const [promoBanner, setPromoBanner] = useState<RestaurantPromoBanner | null>(null);
   useEffect(() => {
     setHasToken(!!getAdminToken());
   }, []);
@@ -78,11 +93,13 @@ export default function RestaurantDetailPage() {
     Promise.all([
       api.get<Restaurant>(`/restaurants/${id}`),
       api.get<MenuListItem[]>(`/restaurants/${id}/menus`),
+      api.get<RestaurantPromoBanner[]>(`/banners/restaurant/${id}/active`),
     ])
-      .then(async ([restRes, menusRes]) => {
+      .then(async ([restRes, menusRes, promoRes]) => {
         setRestaurant(restRes.data);
         const menuList = Array.isArray(menusRes.data) ? menusRes.data : [];
         setMenus(menuList);
+        setPromoBanner((promoRes.data ?? [])[0] ?? null);
 
         if (menuList.length === 0) {
           setSelectedMenu(null);
@@ -250,6 +267,52 @@ export default function RestaurantDetailPage() {
           </div>
         </div>
       </header>
+
+      {promoBanner ? (
+        <section
+          className="mb-6 overflow-hidden rounded-xl border"
+          style={{ borderColor: 'var(--border)', backgroundColor: 'var(--surface)' }}
+        >
+          <div className="flex flex-col sm:flex-row">
+            {promoBanner.media_asset?.secure_url ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={resolvePublicMediaUrl(promoBanner.media_asset.secure_url)}
+                alt=""
+                className="h-40 w-full object-cover sm:h-auto sm:w-56"
+              />
+            ) : null}
+            <div className="flex-1 p-4">
+              <p
+                className="mb-1 text-xs font-semibold uppercase tracking-wide"
+                style={{ color: 'var(--accent-primary)' }}
+              >
+                Promoted · Special offer
+              </p>
+              <h2 className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>
+                {promoBanner.title}
+              </h2>
+              {promoBanner.subtitle ? (
+                <p className="mt-1 text-sm" style={{ color: 'var(--text-secondary)' }}>
+                  {promoBanner.subtitle}
+                </p>
+              ) : null}
+              {promoBanner.cta_label ? (
+                <Link
+                  href={resolveBannerHref(promoBanner)}
+                  className="mt-3 inline-flex rounded-full px-4 py-2 text-sm font-semibold"
+                  style={{
+                    backgroundColor: 'var(--accent-primary)',
+                    color: 'white',
+                  }}
+                >
+                  {promoBanner.cta_label}
+                </Link>
+              ) : null}
+            </div>
+          </div>
+        </section>
+      ) : null}
 
       {restaurant.restaurant_extra_costs != null &&
         restaurant.restaurant_extra_costs.length > 0 && (

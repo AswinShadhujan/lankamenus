@@ -10,7 +10,11 @@ import {
   HttpCode,
   HttpStatus,
   Req,
+  UseInterceptors,
+  UploadedFile,
+  BadRequestException,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import type { Request } from 'express';
 import { MenusService } from './menus.service';
 import { UpdateMenuDto } from './dto/update-menu.dto';
@@ -23,10 +27,18 @@ import { Roles } from '../auth/roles.decorator';
 import { Role } from '../auth/roles.enum';
 import { UseGuards } from '@nestjs/common';
 import { RolesGuard } from '../auth/roles.guard';
+import { SetMenuItemImageUrlDto } from './dto/set-menu-item-image-url.dto';
+import { CloudinaryService } from '../cloudinary/cloudinary.service';
+
+const MAX_DISH_IMAGE_BYTES = 5 * 1024 * 1024;
+const ALLOWED_DISH_MIME = ['image/jpeg', 'image/png', 'image/webp', 'image/gif'];
 
 @Controller('menus')
 export class MenusController {
-  constructor(private readonly menusService: MenusService) {}
+  constructor(
+    private readonly menusService: MenusService,
+    private readonly cloudinary: CloudinaryService,
+  ) {}
 
   // ——— Sections (more specific paths first) ———
   @Post(':menuId/sections')
@@ -82,6 +94,53 @@ export class MenusController {
     @Body() dto: CreateMenuItemDto,
   ) {
     return this.menusService.createItem(menuId, dto);
+  }
+
+  @Post(':menuId/items/:itemId/image')
+  @Roles(Role.ADMIN)
+  @UseGuards(RolesGuard)
+  @UseInterceptors(
+    FileInterceptor('file', {
+      limits: { fileSize: MAX_DISH_IMAGE_BYTES },
+    }),
+  )
+  uploadItemImage(
+    @Param('menuId', ParseIntPipe) menuId: number,
+    @Param('itemId', ParseIntPipe) itemId: number,
+    @UploadedFile() file: Express.Multer.File,
+    @Req() req: Request,
+  ) {
+    this.cloudinary.assertUploadAllowed();
+    if (!file) throw new BadRequestException('No file uploaded');
+    if (!ALLOWED_DISH_MIME.includes(file.mimetype)) {
+      throw new BadRequestException(
+        `Unsupported file type. Allowed: ${ALLOWED_DISH_MIME.join(', ')}`,
+      );
+    }
+    return this.menusService.replaceItemCoverFromUpload(
+      menuId,
+      itemId,
+      file.buffer,
+      file.mimetype,
+      req,
+    );
+  }
+
+  @Patch(':menuId/items/:itemId/image-url')
+  @Roles(Role.ADMIN)
+  @UseGuards(RolesGuard)
+  setItemImageUrl(
+    @Param('menuId', ParseIntPipe) menuId: number,
+    @Param('itemId', ParseIntPipe) itemId: number,
+    @Body() dto: SetMenuItemImageUrlDto,
+    @Req() req: Request,
+  ) {
+    return this.menusService.replaceItemCoverFromExternalUrl(
+      menuId,
+      itemId,
+      dto.imageUrl,
+      req,
+    );
   }
 
   @Patch(':menuId/items/:itemId')

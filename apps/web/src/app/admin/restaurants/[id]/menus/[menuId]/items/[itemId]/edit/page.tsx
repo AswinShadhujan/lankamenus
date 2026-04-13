@@ -1,9 +1,10 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import api from '@/lib/api';
+import { DishImageEditorSection } from '@/components/admin/DishImageEditorSection';
 import { Menu, MenuSection, MenuItem } from '@/types/menu';
 
 export default function EditItemPage() {
@@ -27,8 +28,39 @@ export default function EditItemPage() {
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [uploading, setUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [externalHttpsUrl, setExternalHttpsUrl] = useState('');
+  const [extBusy, setExtBusy] = useState(false);
+  const [imageUploadVersion, setImageUploadVersion] = useState(0);
+  /** File chosen in the picker; uploaded after PATCH on Save changes. */
+  const pendingImageRef = useRef<File | null>(null);
+
+  const applyMenuPayload = useCallback((data: Menu) => {
+    setMenu(data);
+    let found: MenuItem | null = null;
+    let sectionId = 0;
+    for (const sec of data.menu_sections ?? []) {
+      const i = sec.menu_items?.find((it) => it.id === itemId);
+      if (i) {
+        found = i;
+        sectionId = sec.id;
+        break;
+      }
+    }
+    if (found) {
+      setItem(found);
+      setMenuSectionId(sectionId);
+      setName(found.name);
+      setDescription(found.description ?? '');
+      setPrice(found.price != null ? String(found.price) : '');
+      setVeg(found.veg ?? false);
+      setSortOrder(found.sort_order ?? 0);
+      setIngredients(Array.isArray(found.ingredients) ? found.ingredients.join(', ') : '');
+      setRating(found.rating != null ? String(found.rating) : '');
+      setRatingCount(found.rating_count ?? 0);
+      setImageUrl(found.image_url ?? '');
+    }
+  }, [itemId]);
 
   useEffect(() => {
     if (Number.isNaN(menuId) || Number.isNaN(itemId) || menuId < 1 || itemId < 1) {
@@ -39,72 +71,70 @@ export default function EditItemPage() {
     api
       .get<Menu>(`/menus/${menuId}`)
       .then((res) => {
-        setMenu(res.data);
-        let found: MenuItem | null = null;
-        let sectionId = 0;
-        for (const sec of res.data.menu_sections ?? []) {
-          const i = sec.menu_items?.find((it) => it.id === itemId);
-          if (i) {
-            found = i;
-            sectionId = sec.id;
-            break;
-          }
-        }
-        if (found) {
-          setItem(found);
-          setMenuSectionId(sectionId);
-          setName(found.name);
-          setDescription(found.description ?? '');
-          setPrice(found.price != null ? String(found.price) : '');
-          setVeg(found.veg ?? false);
-          setSortOrder(found.sort_order ?? 0);
-          setIngredients(Array.isArray(found.ingredients) ? found.ingredients.join(', ') : '');
-          setRating(found.rating != null ? String(found.rating) : '');
-          setRatingCount(found.rating_count ?? 0);
-          setImageUrl(found.image_url ?? '');
-        } else {
+        const hasItem = res.data.menu_sections?.some((sec) =>
+          sec.menu_items?.some((it) => it.id === itemId),
+        );
+        if (!hasItem) {
           setLoadError('Item not found');
+          return;
         }
+        applyMenuPayload(res.data);
       })
       .catch(() => setLoadError('Failed to load menu'));
-  }, [menuId, itemId]);
+  }, [menuId, itemId, applyMenuPayload]);
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageFilePick = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
+    if (!file) {
+      e.target.value = '';
+      return;
+    }
     if (!file.type.startsWith('image/')) {
       setUploadError('Please select an image (JPEG, PNG, WebP, or GIF).');
+      e.target.value = '';
       return;
     }
     if (file.size > 5 * 1024 * 1024) {
       setUploadError('Image must be 5MB or smaller.');
+      e.target.value = '';
       return;
     }
     setUploadError(null);
-    setUploading(true);
-    const formData = new FormData();
-    formData.append('file', file);
+    pendingImageRef.current = file;
+    e.target.value = '';
+  };
+
+  const handleApplyExternalUrl = () => {
+    const u = externalHttpsUrl.trim();
+    if (!u) {
+      setUploadError('Enter an https image URL.');
+      return;
+    }
+    setUploadError(null);
+    setExtBusy(true);
     api
-      .post<{ url: string }>('/upload/image', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      })
-      .then((res) => {
-        setImageUrl(res.data.url);
-      })
+      .patch(`/menus/${menuId}/items/${itemId}/image-url`, { imageUrl: u })
+      .then(() =>
+        api.get<Menu>(`/menus/${menuId}`).then((res) => {
+          applyMenuPayload(res.data);
+          setExternalHttpsUrl('');
+        }),
+      )
       .catch((err) => {
-        const msg = err.response?.data?.message ?? err.message ?? 'Upload failed';
+        const msg = err.response?.data?.message ?? err.message ?? 'Save failed';
         setUploadError(Array.isArray(msg) ? msg.join(', ') : msg);
       })
       .finally(() => {
-        setUploading(false);
-        e.target.value = '';
+        setExtBusy(false);
+        setImageUploadVersion((n) => n + 1);
       });
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
+    setUploadError(null);
     const priceNum = price.trim() ? parseFloat(price) : NaN;
     const ratingNum = rating.trim() ? parseFloat(rating) : NaN;
     const payload: Record<string, unknown> = {
@@ -121,20 +151,47 @@ export default function EditItemPage() {
       image_url: image_url.trim() ? image_url.trim() : null,
     };
     if (menu_section_id) payload.menu_section_id = menu_section_id;
-    api
-      .patch(`/menus/${menuId}/items/${itemId}`, payload)
-      .then(() => {
-        router.push(`/admin/restaurants/${restaurantId}/menu`);
-        router.refresh();
-      })
-      .catch((err: unknown) => {
-        const msg =
-          err && typeof err === 'object' && 'response' in err
-            ? (err as { response?: { data?: { message?: string | string[] } } }).response?.data?.message
-            : null;
-        setError(Array.isArray(msg) ? msg.join(', ') : msg || 'Failed to update item');
-      })
-      .finally(() => setLoading(false));
+    try {
+      await api.patch(`/menus/${menuId}/items/${itemId}`, payload);
+      const pending = pendingImageRef.current;
+      if (pending) {
+        try {
+          const formData = new FormData();
+          formData.append('file', pending);
+          await api.post(`/menus/${menuId}/items/${itemId}/image`, formData);
+          pendingImageRef.current = null;
+        } catch (err: unknown) {
+          const res = await api.get<Menu>(`/menus/${menuId}`);
+          applyMenuPayload(res.data);
+          setImageUploadVersion((n) => n + 1);
+          const msg =
+            err && typeof err === 'object' && 'response' in err
+              ? (err as { response?: { data?: { message?: string | string[] } } }).response?.data?.message
+              : null;
+          setUploadError(
+            Array.isArray(msg)
+              ? msg.join(', ')
+              : typeof msg === 'string'
+                ? msg
+                : 'Dish saved, but image upload failed. Try again or use a smaller file.',
+          );
+          return;
+        }
+      }
+      const res = await api.get<Menu>(`/menus/${menuId}`);
+      applyMenuPayload(res.data);
+      setImageUploadVersion((n) => n + 1);
+      router.push(`/admin/restaurants/${restaurantId}/menu`);
+      router.refresh();
+    } catch (err: unknown) {
+      const msg =
+        err && typeof err === 'object' && 'response' in err
+          ? (err as { response?: { data?: { message?: string | string[] } } }).response?.data?.message
+          : null;
+      setError(Array.isArray(msg) ? msg.join(', ') : msg || 'Failed to update item');
+    } finally {
+      setLoading(false);
+    }
   };
 
   if (loadError) {
@@ -279,37 +336,30 @@ export default function EditItemPage() {
             />
           </div>
         </div>
-        <div>
-          <span className="admin-label">Dish image</span>
-          <div className="space-y-2">
-            <div className="flex flex-wrap items-center gap-2">
-              <label className="admin-btn-secondary cursor-pointer">
-                <input
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp,image/gif"
-                  className="sr-only"
-                  onChange={handleFileChange}
-                  disabled={uploading}
-                />
-                {uploading ? 'Uploading…' : 'Upload image'}
-              </label>
-              <span className="text-small">JPEG, PNG, WebP or GIF, max 5MB</span>
-            </div>
-            {uploadError && <p className="admin-text-error">{uploadError}</p>}
-            <input
-              id="image_url"
-              type="url"
-              value={image_url}
-              onChange={(e) => {
-                setImageUrl(e.target.value);
-                setUploadError(null);
-              }}
-              placeholder="Or paste image URL (https://...)"
-              className="admin-input"
-            />
-            <p className="text-small">Upload stores the image in object storage; or paste an existing http(s) URL.</p>
-          </div>
-        </div>
+        <DishImageEditorSection
+          item={item}
+          primaryUrlValue={externalHttpsUrl}
+          onPrimaryUrlChange={(v) => {
+            setExternalHttpsUrl(v);
+            setUploadError(null);
+          }}
+          onFileChange={handleImageFilePick}
+          fileInputDisabled={loading}
+          uploadVersion={imageUploadVersion}
+          showPrimaryApply
+          onApplyPrimaryUrl={handleApplyExternalUrl}
+          primaryApplyBusy={extBusy}
+          primaryApplyLabel="Apply URL as cover"
+          showSecondaryUrl
+          secondaryUrlLabel="Legacy image URL (saved with Save changes)"
+          secondaryUrlValue={image_url}
+          onSecondaryUrlChange={(v) => {
+            setImageUrl(v);
+            setUploadError(null);
+          }}
+          errorText={uploadError}
+          hint="File upload runs when you click Save changes. Use “Apply URL as cover” to store an https URL immediately."
+        />
         <button type="submit" disabled={loading} className="admin-btn-primary">
           {loading ? 'Saving…' : 'Save changes'}
         </button>

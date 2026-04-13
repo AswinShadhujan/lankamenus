@@ -17,6 +17,7 @@ import { CreateSectionDto } from './dto/create-section.dto';
 import { UpdateSectionDto } from './dto/update-section.dto';
 import { CreateMenuItemDto } from './dto/create-menu-item.dto';
 import { UpdateMenuItemDto } from './dto/update-menu-item.dto';
+import { MediaService } from '../media/media.service';
 
 /** Text match on dish `name` only (exact / prefix / includes; query already lowercased). */
 function dishNameTextMatchScore(name: string, qLower: string): number {
@@ -48,6 +49,7 @@ export class MenusService {
     private searchService: SearchService,
     private cache: CacheService,
     private menuItemClickTracker: MenuItemClickTrackerService,
+    private media: MediaService,
   ) {}
 
   /**
@@ -108,6 +110,7 @@ export class MenusService {
           include: {
             menu_items: {
               orderBy: { sort_order: 'asc' },
+              include: { media_asset: true },
             },
           },
         },
@@ -256,6 +259,35 @@ export class MenusService {
     await this.searchService.indexRestaurant(section.menu.restaurant_id);
   }
 
+  /**
+   * Postgres SERIAL can fall behind MAX(id) after restores/imports or createMany with explicit ids
+   * (see scripts/migrate-data.ts). Causes P2002 on insert; createItem does not pass `id`.
+   * Manual fix: scripts/sql/fix-menu-items-id-sequence.sql
+   */
+  private async resyncMenuItemsIdSequence(): Promise<void> {
+    await this.prisma.$executeRaw`
+      SELECT setval(
+        pg_get_serial_sequence('menu_items', 'id'),
+        COALESCE((SELECT MAX(id) FROM menu_items), 0) + 1,
+        false
+      )
+    `;
+  }
+
+  /** P2002 on insert: Prisma usually sets meta.modelName + meta.target; accept either shape. */
+  private isMenuItemsIdP2002(e: unknown): boolean {
+    if (!(e instanceof PrismaClientKnownRequestError) || e.code !== 'P2002') {
+      return false;
+    }
+    const meta = e.meta as { modelName?: string; target?: string | string[] } | undefined;
+    if (meta?.modelName === 'menu_items') return true;
+    const t = meta?.target;
+    return (
+      (Array.isArray(t) && t.length === 1 && t[0] === 'id') ||
+      t === 'id'
+    );
+  }
+
   async createItem(menuId: number, dto: CreateMenuItemDto) {
     const section = await this.prisma.menu_sections.findFirst({
       where: { id: dto.menu_section_id, menu_id: menuId },
@@ -282,9 +314,14 @@ export class MenusService {
       rating_count: dto.rating_count ?? undefined,
       image_url: dto.image_url ?? undefined,
     };
-    const item = await this.prisma.menu_items.create({
-      data,
-    });
+    let item;
+    try {
+      item = await this.prisma.menu_items.create({ data });
+    } catch (e) {
+      if (!this.isMenuItemsIdP2002(e)) throw e;
+      await this.resyncMenuItemsIdSequence();
+      item = await this.prisma.menu_items.create({ data });
+    }
     await this.searchService.indexRestaurant(section.menu.restaurant_id);
     await this.invalidateMenuAndListCache(menuId);
     return item;
@@ -326,12 +363,24 @@ export class MenusService {
     if (dto.ingredients !== undefined) data.ingredients = dto.ingredients;
     if (dto.rating !== undefined) data.rating = dto.rating;
     if (dto.rating_count !== undefined) data.rating_count = dto.rating_count;
-    if (dto.image_url !== undefined) data.image_url = dto.image_url ?? null;
+    if (dto.image_url !== undefined) {
+      data.image_url = dto.image_url ?? null;
+      if (item.media_asset_id) {
+        data.media_asset = { disconnect: true };
+      }
+    }
 
     const updated = await this.prisma.menu_items.update({
       where: { id: itemId },
       data,
     });
+    if (dto.image_url !== undefined && item.media_asset_id) {
+      try {
+        await this.media.delete(item.media_asset_id);
+      } catch {
+        /* best-effort */
+      }
+    }
     await this.searchService.indexRestaurant(
       item.menu_section.menu.restaurant_id,
     );
@@ -348,11 +397,19 @@ export class MenusService {
       throw new NotFoundException('Menu item not found');
     }
     const restaurantId = item.menu_section.menu.restaurant_id;
+    const mediaId = item.media_asset_id;
     await this.prisma.menu_items.delete({
       where: { id: itemId },
     });
     await this.searchService.indexRestaurant(restaurantId);
     await this.invalidateMenuAndListCache(menuId);
+    if (mediaId) {
+      try {
+        await this.media.delete(mediaId);
+      } catch {
+        /* best-effort */
+      }
+    }
   }
 
   /** Public: get one menu item with section, menu, and restaurant context. */
@@ -389,7 +446,7 @@ export class MenusService {
           mi.id,
           mi.name,
           mi.price,
-          mi.image_url,
+          COALESCE(ma.secure_url, mi.image_url) AS image_url,
           ms.menu_id,
           r.id AS restaurant_id,
           r.name_default AS restaurant_name,
@@ -397,6 +454,7 @@ export class MenusService {
           mi.is_recommended AS is_recommended,
           r.popular_score AS popular_score
         FROM menu_items mi
+        LEFT JOIN media_assets ma ON ma.id = mi.media_asset_id
         INNER JOIN menu_sections ms ON mi.menu_section_id = ms.id
         INNER JOIN menus m ON ms.menu_id = m.id
         INNER JOIN restaurants r ON m.restaurant_id = r.id
@@ -450,10 +508,85 @@ export class MenusService {
     }));
   }
 
+  /** Admin: dish cover image via Cloudinary (clears legacy `image_url`). */
+  async replaceItemCoverFromUpload(
+    menuId: number,
+    itemId: number,
+    buffer: Buffer,
+    mimeType: string | undefined,
+    req: Request,
+  ) {
+    const item = await this.prisma.menu_items.findFirst({
+      where: { id: itemId },
+      include: { menu_section: { include: { menu: true } } },
+    });
+    if (!item || item.menu_section.menu_id !== menuId) {
+      throw new NotFoundException('Menu item not found');
+    }
+    const prevAssetId = item.media_asset_id;
+    const asset = await this.media.uploadAndCreate(buffer, {
+      folder: 'lankamenus/dishes',
+      mimeType,
+    });
+    await this.prisma.menu_items.update({
+      where: { id: itemId },
+      data: {
+        media_asset: { connect: { id: asset.id } },
+        image_url: null,
+      },
+    });
+    if (prevAssetId && prevAssetId !== asset.id) {
+      try {
+        await this.media.delete(prevAssetId);
+      } catch {
+        /* best-effort */
+      }
+    }
+    await this.searchService.indexRestaurant(item.menu_section.menu.restaurant_id);
+    await this.invalidateMenuAndListCache(menuId);
+    return this.findOneItem(menuId, itemId, req);
+  }
+
+  /** Admin: dish cover image via external HTTPS URL (clears legacy `image_url`). */
+  async replaceItemCoverFromExternalUrl(
+    menuId: number,
+    itemId: number,
+    imageUrl: string,
+    req: Request,
+  ) {
+    const item = await this.prisma.menu_items.findFirst({
+      where: { id: itemId },
+      include: { menu_section: { include: { menu: true } } },
+    });
+    if (!item || item.menu_section.menu_id !== menuId) {
+      throw new NotFoundException('Menu item not found');
+    }
+    const prevAssetId = item.media_asset_id;
+    const asset = await this.media.createFromExternalUrl(imageUrl);
+    await this.prisma.menu_items.update({
+      where: { id: itemId },
+      data: {
+        media_asset: { connect: { id: asset.id } },
+        image_url: null,
+      },
+    });
+    if (prevAssetId && prevAssetId !== asset.id) {
+      try {
+        await this.media.delete(prevAssetId);
+      } catch {
+        /* best-effort */
+      }
+    }
+    await this.searchService.indexRestaurant(item.menu_section.menu.restaurant_id);
+    await this.invalidateMenuAndListCache(menuId);
+    return this.findOneItem(menuId, itemId, req);
+  }
+
   async findOneItem(menuId: number, itemId: number, req: Request) {
     const item = await this.prisma.menu_items.findFirst({
       where: { id: itemId },
       include: {
+        media_asset: true,
         menu_section: {
           include: {
             menu: {
@@ -495,6 +628,15 @@ export class MenusService {
       rating: item.rating ?? null,
       rating_count: item.rating_count ?? 0,
       image_url: item.image_url ?? null,
+      media_asset: item.media_asset
+        ? {
+            id: item.media_asset.id,
+            source_type: item.media_asset.source_type,
+            secure_url: item.media_asset.secure_url,
+          }
+        : null,
+      display_image_url:
+        item.media_asset?.secure_url?.trim() || item.image_url?.trim() || null,
       menu_section_id: item.menu_section_id,
       section_name: item.menu_section.name,
       section: item.menu_section.name,

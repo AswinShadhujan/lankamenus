@@ -7,11 +7,13 @@ import { RestaurantMenusController } from './restaurant-menus.controller';
 import { MenuItemClickTrackerService } from './menu-item-click-tracker.service';
 import { SearchModule } from '../search/search.module';
 import { CacheModule } from '../cache/cache.module';
+import { MediaModule } from '../media/media.module';
 
 @Module({
   imports: [
     SearchModule,
     CacheModule,
+    MediaModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],

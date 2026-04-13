@@ -55,6 +55,13 @@ export default function AdminLayout({
           >
             Restaurants
           </Link>
+          <Link
+            href="/admin/banners"
+            className="text-small font-semibold transition-opacity hover:opacity-80"
+            style={{ color: 'var(--text-primary)' }}
+          >
+            Banners
+          </Link>
           <Link href="/" className="admin-link text-small font-normal">
             View site
           </Link>

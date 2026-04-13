@@ -34,6 +34,11 @@ export const envValidationSchema = Joi.object({
   GOOGLE_CLIENT_ID: Joi.string().optional().allow(''),
   // Required for mobile: exchange authorization code for id_token. Same Web client's secret in Google Cloud Console.
   GOOGLE_CLIENT_SECRET: Joi.string().optional().allow(''),
+  // Cloudinary (optional; when set, banner/media image uploads are available)
+  /** Set all three together (e.g. sub-account / upload API key) or omit all — partial values are rejected at startup. */
+  CLOUDINARY_CLOUD_NAME: Joi.string().trim().optional().allow(''),
+  CLOUDINARY_API_KEY: Joi.string().trim().optional().allow(''),
+  CLOUDINARY_API_SECRET: Joi.string().trim().optional().allow(''),
   // Object storage for image uploads (optional; when set, POST /upload/image is available)
   STORAGE_BUCKET: Joi.string().optional().allow(''),
   STORAGE_REGION: Joi.string().optional().allow(''),

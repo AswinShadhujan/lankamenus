@@ -5,6 +5,7 @@ export interface CombinedSearchRestaurant {
   city: string | null;
   district: string | null;
   photo_reference?: string | null;
+  media_asset?: { secure_url: string; source_type?: string } | null;
   cuisine_tags?: string[];
 }
 

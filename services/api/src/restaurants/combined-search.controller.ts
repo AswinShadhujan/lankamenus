@@ -34,6 +34,9 @@ export class CombinedSearchController {
       city: r.city ?? null,
       district: r.district ?? null,
       photo_reference: r.photo_reference ?? null,
+      media_asset:
+        (r as unknown as { media_asset?: { secure_url: string; source_type?: string } | null })
+          .media_asset ?? null,
       cuisine_tags: r.cuisine_tags ?? [],
     }));
 

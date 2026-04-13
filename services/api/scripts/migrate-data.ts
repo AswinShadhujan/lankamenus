@@ -204,6 +204,8 @@ async function main(): Promise<void> {
             orderBy: { id: 'asc' },
             take,
           }) as unknown as Promise<Record<string, unknown>[]>,
+        // Rows include explicit `id` from source — Postgres sequences are not advanced; run
+        // scripts/sql/fix-menu-items-id-sequence.sql (and siblings for other tables) on target after import.
         insertBatch: async (rows) =>
           (await target.menu_items.createMany({
             data: rows as never[],

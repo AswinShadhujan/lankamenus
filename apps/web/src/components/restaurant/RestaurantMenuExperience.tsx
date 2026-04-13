@@ -57,7 +57,12 @@ const MenuDishCard = memo(function MenuDishCard({
         className="flex cursor-pointer gap-3 rounded-xl p-3 transition-colors hover:bg-[var(--surface)] active:bg-[var(--surface)] sm:gap-4 sm:p-3.5"
         style={{ color: 'inherit' }}
       >
-        <MenuItemCardThumbnail url={item.image_url} alt={item.name} />
+        <MenuItemCardThumbnail
+          url={
+            item.media_asset?.secure_url?.trim() || item.image_url?.trim() || ''
+          }
+          alt={item.name}
+        />
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
             <div className="min-w-0 flex-1">

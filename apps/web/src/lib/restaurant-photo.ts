@@ -3,6 +3,9 @@ export const RESTAURANT_PLACEHOLDER_IMAGE = '/images/restaurant-placeholder.png'
 
 export function hasRestaurantPhoto(restaurant: {
   photo_reference?: string | null;
+  media_asset?: { secure_url?: string | null } | null;
 }): boolean {
-  return Boolean(restaurant.photo_reference?.trim());
+  return Boolean(
+    restaurant.media_asset?.secure_url?.trim() || restaurant.photo_reference?.trim(),
+  );
 }

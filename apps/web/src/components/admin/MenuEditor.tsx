@@ -2,7 +2,10 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import axios from 'axios';
-import api, { resolvePublicMediaUrl } from '@/lib/api';
+import api from '@/lib/api';
+import { resolveDishDisplayImageUrl } from '@/lib/dish-image';
+import { DishImagePreview } from '@/components/admin/DishImagePreview';
+import { DishImageEditorSection } from '@/components/admin/DishImageEditorSection';
 import {
   formatIngredientsBulletLine,
   formatIngredientsCommaInput,
@@ -51,6 +54,15 @@ function parsePrice(p: unknown): number | null {
   return Number.isNaN(n) ? null : n;
 }
 
+function axiosErrorMessage(e: unknown): string | null {
+  if (!e || typeof e !== 'object' || !('response' in e)) return null;
+  const msg = (e as { response?: { data?: { message?: string | string[] } } }).response?.data
+    ?.message;
+  if (Array.isArray(msg)) return msg.join(' ');
+  if (typeof msg === 'string') return msg;
+  return null;
+}
+
 function normalizeMenu(menu: Menu): Menu {
   return {
     ...menu,
@@ -88,56 +100,6 @@ type MenuEditorProps = {
   restaurantId: number;
 };
 
-/** Lazy image preview for admin menu items; resets on URL change. */
-function DishImagePreview({
-  url,
-  variant,
-}: {
-  url: string;
-  variant: 'thumb' | 'editor';
-}) {
-  const [loadError, setLoadError] = useState(false);
-  const resolved = resolvePublicMediaUrl(url.trim());
-
-  useEffect(() => {
-    setLoadError(false);
-  }, [resolved]);
-
-  if (!resolved) return null;
-
-  if (loadError) {
-    return (
-      <div
-        className={
-          variant === 'thumb'
-            ? 'flex h-10 w-10 shrink-0 items-center justify-center rounded border border-dashed border-[var(--border)] bg-[var(--surface)] text-[8px] leading-tight text-[var(--text-secondary)]'
-            : 'flex max-h-32 w-full max-w-md items-center justify-center rounded border border-dashed border-[var(--border)] bg-[var(--surface)] py-6 text-xs text-[var(--text-secondary)]'
-        }
-        role="img"
-        aria-label="Image preview unavailable"
-      >
-        {variant === 'thumb' ? '—' : 'Could not load image'}
-      </div>
-    );
-  }
-
-  return (
-    // eslint-disable-next-line @next/next/no-img-element -- admin previews arbitrary HTTPS URLs
-    <img
-      src={resolved}
-      alt=""
-      loading="lazy"
-      decoding="async"
-      className={
-        variant === 'thumb'
-          ? 'h-10 w-10 shrink-0 rounded border border-[var(--border)] bg-[var(--background)] object-cover'
-          : 'max-h-48 w-full max-w-md rounded border border-[var(--border)] bg-[var(--background)] object-contain'
-      }
-      onError={() => setLoadError(true)}
-    />
-  );
-}
-
 export function MenuEditor({ restaurantId }: MenuEditorProps) {
   const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
   const [menu, setMenu] = useState<Menu | null>(null);
@@ -156,6 +118,13 @@ export function MenuEditor({ restaurantId }: MenuEditorProps) {
   const [newItemName, setNewItemName] = useState<Record<number, string>>({});
   const [newItemPrice, setNewItemPrice] = useState<Record<number, string>>({});
   const [newItemVeg, setNewItemVeg] = useState<Record<number, boolean>>({});
+  const [newItemIngredients, setNewItemIngredients] = useState<Record<number, string>>({});
+  const [newItemImageUrl, setNewItemImageUrl] = useState<Record<number, string>>({});
+  const [newItemIsAvailable, setNewItemIsAvailable] = useState<Record<number, boolean>>({});
+  const [newItemIsPopular, setNewItemIsPopular] = useState<Record<number, boolean>>({});
+  const [newItemIsRecommended, setNewItemIsRecommended] = useState<Record<number, boolean>>({});
+  const [creatingSectionId, setCreatingSectionId] = useState<number | null>(null);
+  const newItemFileInputRefs = useRef<Map<number, HTMLInputElement | null>>(new Map());
 
   const [itemSearch, setItemSearch] = useState('');
 
@@ -165,6 +134,9 @@ export function MenuEditor({ restaurantId }: MenuEditorProps) {
   const [editItemIngredients, setEditItemIngredients] = useState('');
   const [editItemImageUrl, setEditItemImageUrl] = useState('');
   const [itemBusy, setItemBusy] = useState<number | null>(null);
+  const [editImageUploadVersion, setEditImageUploadVersion] = useState(0);
+  /** Picked image file for inline edit; uploaded on Save (after PATCH), not on pick. */
+  const editItemPendingImageRef = useRef<File | null>(null);
 
   const editNameRef = useRef<HTMLInputElement>(null);
   const editPriceRef = useRef<HTMLInputElement>(null);
@@ -403,79 +375,83 @@ export function MenuEditor({ restaurantId }: MenuEditorProps) {
       setError('Enter a price greater than 0');
       return;
     }
-    const veg = newItemVeg[sectionId] ?? false;
     const section = menu?.menu_sections?.find((s) => s.id === sectionId);
     if (!section) return;
+
+    const fileInput = newItemFileInputRefs.current.get(sectionId);
+    const file = fileInput?.files?.[0];
+    const imageUrlTrim = (newItemImageUrl[sectionId] ?? '').trim();
+
+    if (file) {
+      if (!file.type.startsWith('image/')) {
+        setError('Image must be JPEG, PNG, WebP, or GIF');
+        return;
+      }
+      if (file.size > 5 * 1024 * 1024) {
+        setError('Image must be 5 MB or smaller');
+        return;
+      }
+    }
+
+    const veg = newItemVeg[sectionId] ?? false;
     const sort_order = maxItemOrder(section);
-    const tempId = -Date.now();
-    const snapshot = cloneMenu(menu);
-    const optimistic: MenuItem = {
-      id: tempId,
+    const ingredients = parseIngredientsFromCommaInput(newItemIngredients[sectionId] ?? '');
+    const is_available = newItemIsAvailable[sectionId] !== false;
+    const is_popular = Boolean(newItemIsPopular[sectionId]);
+    const is_recommended = Boolean(newItemIsRecommended[sectionId]);
+
+    const useUrlOnCreate = imageUrlTrim.length > 0 && !file;
+    const createBody: Record<string, unknown> = {
+      menu_section_id: sectionId,
       name,
       price,
       veg,
       sort_order,
-      currency: 'LKR',
-      is_available: true,
-      is_popular: false,
-      is_recommended: false,
-      ingredients: [],
+      is_available,
+      is_popular,
+      is_recommended,
+      ingredients,
     };
-    setMenu((m) =>
-      m
-        ? normalizeMenu({
-            ...m,
-            menu_sections: (m.menu_sections ?? []).map((s) =>
-              s.id === sectionId
-                ? { ...s, menu_items: [...(s.menu_items ?? []), optimistic] }
-                : s,
-            ),
-          })
-        : m,
-    );
-    setNewItemName((prev) => ({ ...prev, [sectionId]: '' }));
-    setNewItemPrice((prev) => ({ ...prev, [sectionId]: '' }));
-    setNewItemVeg((prev) => ({ ...prev, [sectionId]: false }));
+    if (useUrlOnCreate) createBody.image_url = imageUrlTrim;
+
+    setCreatingSectionId(sectionId);
     setError(null);
     try {
-      const { data } = await api.post<MenuItem>(`/menus/${menuId}/items`, {
-        menu_section_id: sectionId,
-        name,
-        price,
-        veg,
-        sort_order,
-        is_available: true,
-        is_popular: false,
-        is_recommended: false,
-      });
-      setMenu((m) =>
-        m
-          ? normalizeMenu({
-              ...m,
-              menu_sections: (m.menu_sections ?? []).map((s) =>
-                s.id === sectionId
-                  ? {
-                      ...s,
-                      menu_items: (s.menu_items ?? []).map((it) =>
-                        it.id === tempId
-                          ? {
-                              ...data,
-                              price: parsePrice(data.price),
-                              is_available: data.is_available !== false,
-                              is_popular: Boolean(data.is_popular),
-                              is_recommended: Boolean(data.is_recommended),
-                            }
-                          : it,
-                      ),
-                    }
-                  : s,
-              ),
-            })
-          : m,
-      );
-    } catch {
-      setMenu(snapshot);
-      setError('Failed to add item');
+      const { data: created } = await api.post<MenuItem>(`/menus/${menuId}/items`, createBody);
+
+      if (file) {
+        const fd = new FormData();
+        fd.append('file', file);
+        try {
+          await api.post(`/menus/${menuId}/items/${created.id}/image`, fd);
+        } catch (uploadErr: unknown) {
+          const { data: partialMenu } = await api.get<Menu>(`/menus/${menuId}`);
+          setMenu(normalizeMenu(partialMenu));
+          setError(
+            axiosErrorMessage(uploadErr) ||
+              'Dish was created; image upload failed. Edit the dish to try again.',
+          );
+          setCreatingSectionId(null);
+          return;
+        }
+      }
+
+      const { data: freshMenu } = await api.get<Menu>(`/menus/${menuId}`);
+      setMenu(normalizeMenu(freshMenu));
+
+      setNewItemName((prev) => ({ ...prev, [sectionId]: '' }));
+      setNewItemPrice((prev) => ({ ...prev, [sectionId]: '' }));
+      setNewItemVeg((prev) => ({ ...prev, [sectionId]: false }));
+      setNewItemIngredients((prev) => ({ ...prev, [sectionId]: '' }));
+      setNewItemImageUrl((prev) => ({ ...prev, [sectionId]: '' }));
+      setNewItemIsAvailable((prev) => ({ ...prev, [sectionId]: true }));
+      setNewItemIsPopular((prev) => ({ ...prev, [sectionId]: false }));
+      setNewItemIsRecommended((prev) => ({ ...prev, [sectionId]: false }));
+      if (fileInput) fileInput.value = '';
+    } catch (e: unknown) {
+      setError(axiosErrorMessage(e) || 'Failed to add dish');
+    } finally {
+      setCreatingSectionId(null);
     }
   };
 
@@ -506,14 +482,44 @@ export function MenuEditor({ restaurantId }: MenuEditorProps) {
     }
   };
 
+  const cancelEditItem = () => {
+    editItemPendingImageRef.current = null;
+    setEditImageUploadVersion((n) => n + 1);
+    setEditingItemId(null);
+  };
+
   const startEditItem = (item: MenuItem) => {
+    editItemPendingImageRef.current = null;
     setEditingItemId(item.id);
+    setEditImageUploadVersion((n) => n + 1);
     setEditItemName(item.name);
     setEditItemPrice(
       item.price != null ? String(parsePrice(item.price) ?? '') : '',
     );
     setEditItemIngredients(formatIngredientsCommaInput(item.ingredients));
     setEditItemImageUrl(item.image_url?.trim() ?? '');
+  };
+
+  /** Stage file for upload when user clicks Save dish (preview only until then). */
+  const handleEditItemImagePick = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) {
+      e.target.value = '';
+      return;
+    }
+    if (!file.type.startsWith('image/')) {
+      setError('Image must be JPEG, PNG, WebP, or GIF');
+      e.target.value = '';
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      setError('Image must be 5 MB or smaller');
+      e.target.value = '';
+      return;
+    }
+    setError(null);
+    editItemPendingImageRef.current = file;
+    e.target.value = '';
   };
 
   const handleSaveItem = async (sectionId: number, itemId: number) => {
@@ -564,7 +570,6 @@ export function MenuEditor({ restaurantId }: MenuEditorProps) {
           })
         : m,
     );
-    setEditingItemId(null);
     setError(null);
     try {
       await api.patch(`/menus/${menuId}/items/${itemId}`, {
@@ -573,6 +578,28 @@ export function MenuEditor({ restaurantId }: MenuEditorProps) {
         ingredients,
         image_url,
       });
+      const pendingImage = editItemPendingImageRef.current;
+      if (pendingImage) {
+        try {
+          const fd = new FormData();
+          fd.append('file', pendingImage);
+          await api.post(`/menus/${menuId}/items/${itemId}/image`, fd);
+          editItemPendingImageRef.current = null;
+        } catch (uploadErr: unknown) {
+          const { data: freshMenu } = await api.get<Menu>(`/menus/${menuId}`);
+          setMenu(normalizeMenu(freshMenu));
+          setEditImageUploadVersion((n) => n + 1);
+          setError(
+            axiosErrorMessage(uploadErr) ||
+              'Dish saved, but image upload failed. Try again or use a smaller file.',
+          );
+          return;
+        }
+      }
+      const { data: freshMenu } = await api.get<Menu>(`/menus/${menuId}`);
+      setMenu(normalizeMenu(freshMenu));
+      setEditingItemId(null);
+      setEditImageUploadVersion((n) => n + 1);
     } catch {
       setMenu(snapshot);
       setError('Failed to update item');
@@ -659,6 +686,7 @@ export function MenuEditor({ restaurantId }: MenuEditorProps) {
             })
           : m,
       );
+      editItemPendingImageRef.current = null;
       setEditingItemId(data.id);
       setEditItemName(data.name);
       setEditItemPrice(String(parsePrice(data.price) ?? ''));
@@ -781,6 +809,7 @@ export function MenuEditor({ restaurantId }: MenuEditorProps) {
       <div className="space-y-2">
         {sections.map((section, sIdx) => {
           const isCollapsed = collapsed[section.id];
+          const creatingHere = creatingSectionId === section.id;
           const q = itemSearch.trim().toLowerCase();
           const allItems = [...(section.menu_items ?? [])].sort(
             (a, b) => a.sort_order - b.sort_order,
@@ -892,7 +921,7 @@ export function MenuEditor({ restaurantId }: MenuEditorProps) {
                       return (
                         <div key={item.id} className="flex flex-col gap-1 py-1.5">
                           {editingItemId === item.id ? (
-                            <div className="flex flex-col gap-1.5">
+                            <div className="flex flex-col gap-2">
                               <div className="flex flex-wrap items-center gap-2">
                                 <input
                                   ref={editNameRef}
@@ -905,7 +934,7 @@ export function MenuEditor({ restaurantId }: MenuEditorProps) {
                                       e.preventDefault();
                                       editPriceRef.current?.focus();
                                     }
-                                    if (e.key === 'Escape') setEditingItemId(null);
+                                    if (e.key === 'Escape') cancelEditItem();
                                   }}
                                 />
                                 <input
@@ -921,24 +950,9 @@ export function MenuEditor({ restaurantId }: MenuEditorProps) {
                                       e.preventDefault();
                                       editIngredientsRef.current?.focus();
                                     }
-                                    if (e.key === 'Escape') setEditingItemId(null);
+                                    if (e.key === 'Escape') cancelEditItem();
                                   }}
                                 />
-                                <button
-                                  type="button"
-                                  className="admin-btn-primary py-0.5 px-2 text-xs"
-                                  disabled={busy}
-                                  onClick={() => void handleSaveItem(section.id, item.id)}
-                                >
-                                  Save
-                                </button>
-                                <button
-                                  type="button"
-                                  className="admin-btn-secondary py-0.5 px-2 text-xs"
-                                  onClick={() => setEditingItemId(null)}
-                                >
-                                  Cancel
-                                </button>
                               </div>
                               <input
                                 ref={editIngredientsRef}
@@ -952,31 +966,20 @@ export function MenuEditor({ restaurantId }: MenuEditorProps) {
                                     e.preventDefault();
                                     void handleSaveItem(section.id, item.id);
                                   }
-                                  if (e.key === 'Escape') setEditingItemId(null);
+                                  if (e.key === 'Escape') cancelEditItem();
                                 }}
                               />
-                              <input
-                                type="url"
-                                value={editItemImageUrl}
-                                onChange={(e) => setEditItemImageUrl(e.target.value)}
-                                placeholder="Image URL (optional)"
-                                className="admin-input w-full max-w-xl py-0.5 text-xs"
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter') {
-                                    e.preventDefault();
-                                    void handleSaveItem(section.id, item.id);
-                                  }
-                                  if (e.key === 'Escape') setEditingItemId(null);
-                                }}
-                              />
-                              {editItemImageUrl.trim() ? (
-                                <div className="max-w-xl">
-                                  <p className="mb-0.5 text-[10px] text-[var(--text-secondary)]">
-                                    Preview
-                                  </p>
-                                  <DishImagePreview url={editItemImageUrl} variant="editor" />
-                                </div>
-                              ) : null}
+                              <div className="max-w-xl rounded border border-[var(--border)] bg-[var(--background)] p-2">
+                                <DishImageEditorSection
+                                  item={item}
+                                  primaryUrlValue={editItemImageUrl}
+                                  onPrimaryUrlChange={setEditItemImageUrl}
+                                  onFileChange={handleEditItemImagePick}
+                                  fileInputDisabled={busy}
+                                  uploadVersion={editImageUploadVersion}
+                                  hint="File upload runs when you click Save dish (after text fields are saved)."
+                                />
+                              </div>
                               <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-[var(--text-secondary)]">
                                 <label className="flex cursor-pointer items-center gap-1">
                                   <input
@@ -1038,12 +1041,29 @@ export function MenuEditor({ restaurantId }: MenuEditorProps) {
                                   Recommended
                                 </label>
                               </div>
+                              <div className="flex flex-wrap gap-2 border-t border-[var(--border)] pt-2">
+                                <button
+                                  type="button"
+                                  className="admin-btn-primary py-0.5 px-3 text-xs"
+                                  disabled={busy}
+                                  onClick={() => void handleSaveItem(section.id, item.id)}
+                                >
+                                  Save dish
+                                </button>
+                                <button
+                                  type="button"
+                                  className="admin-btn-secondary py-0.5 px-3 text-xs"
+                                  onClick={cancelEditItem}
+                                >
+                                  Cancel
+                                </button>
+                              </div>
                             </div>
                           ) : (
                             <>
                               <div className="flex min-w-0 flex-wrap items-start gap-2">
                                 <DishImagePreview
-                                  url={item.image_url?.trim() ?? ''}
+                                  url={resolveDishDisplayImageUrl(item)}
                                   variant="thumb"
                                 />
                                 <div className="min-w-0 flex-1">
@@ -1185,50 +1205,159 @@ export function MenuEditor({ restaurantId }: MenuEditorProps) {
                     })}
                   </div>
 
-                  <div className="mt-1.5 flex flex-wrap items-center gap-1 border-t border-[var(--border)] pt-1.5">
-                    <input
-                      type="text"
-                      value={newItemName[section.id] ?? ''}
-                      onChange={(e) =>
-                        setNewItemName((p) => ({ ...p, [section.id]: e.target.value }))
-                      }
-                      placeholder="Item name (required)"
-                      className="admin-input min-w-[6rem] max-w-[14rem] flex-1 py-0.5 text-xs"
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') void handleAddItem(section.id);
-                      }}
-                    />
-                    <input
-                      type="text"
-                      inputMode="decimal"
-                      value={newItemPrice[section.id] ?? ''}
-                      onChange={(e) =>
-                        setNewItemPrice((p) => ({ ...p, [section.id]: e.target.value }))
-                      }
-                      placeholder="Price (>0)"
-                      className="admin-input w-24 py-0.5 text-xs"
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') void handleAddItem(section.id);
-                      }}
-                    />
-                    <label className="flex items-center gap-0.5 text-xs whitespace-nowrap">
-                      <input
-                        type="checkbox"
-                        checked={newItemVeg[section.id] ?? false}
-                        onChange={(e) =>
-                          setNewItemVeg((p) => ({ ...p, [section.id]: e.target.checked }))
-                        }
-                      />
-                      Veg
-                    </label>
-                    <button
-                      type="button"
-                      className="admin-btn-primary py-0.5 px-2 text-xs"
-                      title="Add item"
-                      onClick={() => void handleAddItem(section.id)}
-                    >
-                      +
-                    </button>
+                  <div className="mt-2 space-y-3 border-t border-[var(--border)] pt-2">
+                    <div className="rounded-md border border-[var(--border)] bg-[var(--surface)] p-3">
+                      <p className="mb-2 text-xs font-semibold text-[var(--text-primary)]">New dish</p>
+
+                      <div className="space-y-1.5">
+                        <p className="text-[10px] font-medium uppercase tracking-wide text-[var(--text-secondary)]">
+                          Basic
+                        </p>
+                        <div className="grid gap-2 sm:grid-cols-2">
+                          <input
+                            type="text"
+                            value={newItemName[section.id] ?? ''}
+                            onChange={(e) =>
+                              setNewItemName((p) => ({ ...p, [section.id]: e.target.value }))
+                            }
+                            placeholder="Name (required)"
+                            className="admin-input py-1 text-xs"
+                            disabled={creatingHere}
+                          />
+                          <input
+                            type="text"
+                            inputMode="decimal"
+                            value={newItemPrice[section.id] ?? ''}
+                            onChange={(e) =>
+                              setNewItemPrice((p) => ({ ...p, [section.id]: e.target.value }))
+                            }
+                            placeholder="Price LKR (> 0)"
+                            className="admin-input py-1 text-xs"
+                            disabled={creatingHere}
+                          />
+                        </div>
+                      </div>
+
+                      <div className="mt-3 space-y-1.5">
+                        <p className="text-[10px] font-medium uppercase tracking-wide text-[var(--text-secondary)]">
+                          Image
+                        </p>
+                        <p className="text-[10px] text-[var(--text-secondary)]">
+                          Upload preferred. If you pick a file, it replaces any URL below for this save.
+                        </p>
+                        <input
+                          type="file"
+                          accept="image/jpeg,image/png,image/webp,image/gif"
+                          className="max-w-full text-[10px] file:mr-2 file:rounded file:border-0 file:bg-[var(--accent-primary)] file:px-2 file:py-1 file:text-xs file:text-white"
+                          disabled={creatingHere}
+                          ref={(el) => {
+                            if (el) newItemFileInputRefs.current.set(section.id, el);
+                            else newItemFileInputRefs.current.delete(section.id);
+                          }}
+                        />
+                        <input
+                          type="url"
+                          value={newItemImageUrl[section.id] ?? ''}
+                          onChange={(e) =>
+                            setNewItemImageUrl((p) => ({ ...p, [section.id]: e.target.value }))
+                          }
+                          placeholder="Or https image URL (optional)"
+                          className="admin-input py-1 text-xs"
+                          disabled={creatingHere}
+                        />
+                      </div>
+
+                      <div className="mt-3 space-y-1.5">
+                        <p className="text-[10px] font-medium uppercase tracking-wide text-[var(--text-secondary)]">
+                          Ingredients
+                        </p>
+                        <input
+                          type="text"
+                          value={newItemIngredients[section.id] ?? ''}
+                          onChange={(e) =>
+                            setNewItemIngredients((p) => ({
+                              ...p,
+                              [section.id]: e.target.value,
+                            }))
+                          }
+                          placeholder="Comma-separated (e.g. rice, chicken, spices)"
+                          className="admin-input py-1 text-xs"
+                          disabled={creatingHere}
+                        />
+                      </div>
+
+                      <div className="mt-3">
+                        <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wide text-[var(--text-secondary)]">
+                          Options
+                        </p>
+                        <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs">
+                          <label className="flex cursor-pointer items-center gap-1.5 text-[var(--text-secondary)]">
+                            <input
+                              type="checkbox"
+                              checked={newItemIsAvailable[section.id] !== false}
+                              onChange={(e) =>
+                                setNewItemIsAvailable((p) => ({
+                                  ...p,
+                                  [section.id]: e.target.checked,
+                                }))
+                              }
+                              disabled={creatingHere}
+                            />
+                            Available
+                          </label>
+                          <label className="flex cursor-pointer items-center gap-1.5 text-[var(--text-secondary)]">
+                            <input
+                              type="checkbox"
+                              checked={Boolean(newItemIsPopular[section.id])}
+                              onChange={(e) =>
+                                setNewItemIsPopular((p) => ({
+                                  ...p,
+                                  [section.id]: e.target.checked,
+                                }))
+                              }
+                              disabled={creatingHere}
+                            />
+                            Popular
+                          </label>
+                          <label className="flex cursor-pointer items-center gap-1.5 text-[var(--text-secondary)]">
+                            <input
+                              type="checkbox"
+                              checked={Boolean(newItemIsRecommended[section.id])}
+                              onChange={(e) =>
+                                setNewItemIsRecommended((p) => ({
+                                  ...p,
+                                  [section.id]: e.target.checked,
+                                }))
+                              }
+                              disabled={creatingHere}
+                            />
+                            Recommended
+                          </label>
+                          <label className="flex cursor-pointer items-center gap-1.5 text-[var(--text-secondary)]">
+                            <input
+                              type="checkbox"
+                              checked={newItemVeg[section.id] ?? false}
+                              onChange={(e) =>
+                                setNewItemVeg((p) => ({ ...p, [section.id]: e.target.checked }))
+                              }
+                              disabled={creatingHere}
+                            />
+                            Veg
+                          </label>
+                        </div>
+                      </div>
+
+                      <div className="mt-3 flex justify-end border-t border-[var(--border)] pt-2">
+                        <button
+                          type="button"
+                          className="admin-btn-primary px-4 py-1.5 text-xs"
+                          disabled={creatingHere}
+                          onClick={() => void handleAddItem(section.id)}
+                        >
+                          {creatingHere ? 'Saving…' : 'Save dish'}
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 </div>
               )}

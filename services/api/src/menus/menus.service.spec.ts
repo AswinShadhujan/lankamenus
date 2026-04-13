@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { NotFoundException, BadRequestException } from '@nestjs/common';
 import type { Request } from 'express';
 import { MenusService } from './menus.service';
+import { MediaService } from '../media/media.service';
 import { MenuItemClickTrackerService } from './menu-item-click-tracker.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { SearchService } from '../search/search.service';
@@ -92,6 +93,12 @@ describe('MenusService', () => {
       shouldIncrementClick: jest.fn().mockResolvedValue(true),
     };
 
+    const mockMediaService = {
+      uploadAndCreate: jest.fn(),
+      createFromExternalUrl: jest.fn(),
+      delete: jest.fn(),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         MenusService,
@@ -99,12 +106,12 @@ describe('MenusService', () => {
         { provide: SearchService, useValue: mockSearchService },
         { provide: CacheService, useValue: mockCacheService },
         { provide: MenuItemClickTrackerService, useValue: mockClickTracker },
+        { provide: MediaService, useValue: mockMediaService },
       ],
     }).compile();
 
     service = module.get<MenusService>(MenusService);
     prisma = module.get<PrismaService>(PrismaService);
-    clickTracker = module.get<MenuItemClickTrackerService>(MenuItemClickTrackerService);
   });
 
   it('should be defined', () => {
@@ -278,6 +285,22 @@ describe('MenusService', () => {
       });
       expect(result.name).toBe(dto.name);
     });
+
+    it('should resync menu_items id sequence and retry when create hits P2002 on id', async () => {
+      jest.spyOn(prisma.menu_sections, 'findFirst').mockResolvedValue(mockSection as never);
+      const p2002 = new PrismaClientKnownRequestError('Unique constraint failed', {
+        code: 'P2002',
+        clientVersion: '6.19.2',
+        meta: { modelName: 'menu_items', target: ['id'] },
+      });
+      const createSpy = jest.spyOn(prisma.menu_items, 'create');
+      createSpy.mockRejectedValueOnce(p2002);
+      createSpy.mockResolvedValueOnce({ ...mockItem, name: dto.name } as never);
+      const result = await service.createItem(1, dto);
+      expect(prisma.$executeRaw).toHaveBeenCalled();
+      expect(createSpy).toHaveBeenCalledTimes(2);
+      expect(result.name).toBe(dto.name);
+    });
   });
 
   describe('updateItem', () => {
@@ -359,6 +382,7 @@ describe('MenusService', () => {
       rating: 4.4,
       rating_count: 28,
       image_url: 'https://example.com/burger.jpg',
+      media_asset: null,
       menu_section: {
         id: 1,
         name: 'Starters',
@@ -400,7 +424,7 @@ describe('MenusService', () => {
 
     it('should return dish detail with context when item exists and menu is active', async () => {
       jest.spyOn(prisma.menu_items, 'findFirst').mockResolvedValue(itemWithContext as never);
-      const result = await service.findOneItem(1, 1);
+      const result = await service.findOneItem(1, 1, mockReq);
       expect(prisma.$executeRaw).toHaveBeenCalled();
       expect(result).toEqual({
         id: 1,
@@ -417,6 +441,8 @@ describe('MenusService', () => {
         rating: 4.4,
         rating_count: 28,
         image_url: 'https://example.com/burger.jpg',
+        media_asset: null,
+        display_image_url: 'https://example.com/burger.jpg',
         menu_section_id: 1,
         section_name: 'Starters',
         section: 'Starters',
@@ -435,6 +461,7 @@ describe('MenusService', () => {
         rating: null,
         rating_count: null,
         image_url: null,
+        media_asset: null,
         menu_section: {
           id: 1,
           name: 'Starters',

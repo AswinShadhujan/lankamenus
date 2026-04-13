@@ -33,6 +33,7 @@ import {
 } from './dto/search-restaurants.dto';
 import { CreateRestaurantDto } from './dto/create-restaurant.dto';
 import { UpdateRestaurantDto } from './dto/update-restaurant.dto';
+import { MediaService } from '../media/media.service';
 
 const SELECT_RESTAURANT = RESTAURANT_LIST_SELECT;
 
@@ -211,6 +212,7 @@ export class RestaurantsService implements OnModuleInit {
     private cache: CacheService,
     private config: ConfigService,
     private rankingService: RankingService,
+    private media: MediaService,
   ) {}
 
   /** TODO(geo): remove after confirming production runs current source (not stale dist). */
@@ -906,6 +908,20 @@ export class RestaurantsService implements OnModuleInit {
         restaurant_extra_costs: {
           orderBy: { sort_order: 'asc' },
         },
+        media_asset: {
+          select: {
+            id: true,
+            source_type: true,
+            provider: true,
+            secure_url: true,
+            public_id: true,
+            width: true,
+            height: true,
+            format: true,
+            mime_type: true,
+            alt_text: true,
+          },
+        },
       },
     });
     if (!restaurant) {
@@ -955,6 +971,59 @@ export class RestaurantsService implements OnModuleInit {
     });
     await this.invalidateRestaurantCache(restaurantId);
     return this.getExtraCosts(restaurantId);
+  }
+
+  /** Admin: replace cover image with a Cloudinary upload. */
+  async replaceRestaurantCoverFromUpload(
+    restaurantId: number,
+    buffer: Buffer,
+    mimeType?: string,
+  ) {
+    await this.ensureRestaurantExists(restaurantId);
+    const prev = await this.prisma.restaurants.findUnique({
+      where: { id: restaurantId },
+      select: { media_asset_id: true },
+    });
+    const asset = await this.media.uploadAndCreate(buffer, {
+      folder: 'lankamenus/restaurants',
+      mimeType,
+    });
+    await this.prisma.restaurants.update({
+      where: { id: restaurantId },
+      data: { media_asset_id: asset.id },
+    });
+    if (prev?.media_asset_id && prev.media_asset_id !== asset.id) {
+      try {
+        await this.media.delete(prev.media_asset_id);
+      } catch {
+        /* best-effort */
+      }
+    }
+    await this.invalidateRestaurantCache(restaurantId);
+    return this.findOne(restaurantId);
+  }
+
+  /** Admin: replace cover image with an external HTTPS URL (media_assets row). */
+  async replaceRestaurantCoverFromExternalUrl(restaurantId: number, imageUrl: string) {
+    await this.ensureRestaurantExists(restaurantId);
+    const prev = await this.prisma.restaurants.findUnique({
+      where: { id: restaurantId },
+      select: { media_asset_id: true },
+    });
+    const asset = await this.media.createFromExternalUrl(imageUrl);
+    await this.prisma.restaurants.update({
+      where: { id: restaurantId },
+      data: { media_asset_id: asset.id },
+    });
+    if (prev?.media_asset_id && prev.media_asset_id !== asset.id) {
+      try {
+        await this.media.delete(prev.media_asset_id);
+      } catch {
+        /* best-effort */
+      }
+    }
+    await this.invalidateRestaurantCache(restaurantId);
+    return this.findOne(restaurantId);
   }
 
   private async ensureRestaurantExists(id: number) {
@@ -1167,6 +1236,41 @@ export class RestaurantsService implements OnModuleInit {
   }
 
   async delete(id: number) {
+    const prior = await this.prisma.restaurants.findUnique({
+      where: { id },
+      select: { media_asset_id: true },
+    });
+    const dishMediaRows = await this.prisma.menu_items.findMany({
+      where: {
+        menu_section: { menu: { restaurant_id: id } },
+        media_asset_id: { not: null },
+      },
+      select: { media_asset_id: true },
+    });
+    const mediaIdsToRemove = new Set<number>();
+    for (const r of dishMediaRows) {
+      if (r.media_asset_id != null) mediaIdsToRemove.add(r.media_asset_id);
+    }
+    if (prior?.media_asset_id != null) {
+      mediaIdsToRemove.add(prior.media_asset_id);
+    }
+
+    await this.prisma.menu_items.updateMany({
+      where: { menu_section: { menu: { restaurant_id: id } } },
+      data: { media_asset_id: null },
+    });
+    await this.prisma.restaurants.update({
+      where: { id },
+      data: { media_asset_id: null },
+    });
+    for (const mid of mediaIdsToRemove) {
+      try {
+        await this.media.delete(mid);
+      } catch {
+        /* best-effort */
+      }
+    }
+
     try {
       await this.prisma.restaurants.delete({
         where: { id },

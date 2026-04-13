@@ -403,7 +403,7 @@ export class DishesService {
         mi.name,
         mi.price,
         mi.currency,
-        mi.image_url,
+        COALESCE(ma.secure_url, mi.image_url) AS image_url,
         mi.is_popular,
         mi.is_recommended,
         COALESCE(mi.click_count, 0)::int AS click_count,
@@ -414,6 +414,7 @@ export class DishesService {
         r.popular_score AS restaurant_popular_score
         ${distSelect}
       FROM menu_items mi
+      LEFT JOIN media_assets ma ON ma.id = mi.media_asset_id
       INNER JOIN menu_sections ms ON mi.menu_section_id = ms.id
       INNER JOIN menus m ON ms.menu_id = m.id
       INNER JOIN restaurants r ON m.restaurant_id = r.id
@@ -440,7 +441,7 @@ export class DishesService {
           mi.name,
           mi.price,
           mi.currency,
-          mi.image_url,
+          COALESCE(ma.secure_url, mi.image_url) AS image_url,
           mi.is_popular,
           mi.is_recommended,
           COALESCE(mi.click_count, 0)::int AS click_count,
@@ -451,6 +452,7 @@ export class DishesService {
           r.popular_score AS restaurant_popular_score
           ${distSelect}
         FROM menu_items mi
+        LEFT JOIN media_assets ma ON ma.id = mi.media_asset_id
         INNER JOIN menu_sections ms ON mi.menu_section_id = ms.id
         INNER JOIN menus m ON ms.menu_id = m.id
         INNER JOIN restaurants r ON m.restaurant_id = r.id
@@ -544,7 +546,7 @@ export class DishesService {
         mi.name,
         mi.price,
         mi.currency,
-        mi.image_url,
+        COALESCE(ma.secure_url, mi.image_url) AS image_url,
         mi.is_popular,
         mi.is_recommended,
         COALESCE(mi.click_count, 0)::int AS click_count,
@@ -554,6 +556,7 @@ export class DishesService {
         r.rating AS restaurant_rating
         ${distSelect}
       FROM menu_items mi
+      LEFT JOIN media_assets ma ON ma.id = mi.media_asset_id
       INNER JOIN menu_sections ms ON mi.menu_section_id = ms.id
       INNER JOIN menus m ON ms.menu_id = m.id
       INNER JOIN restaurants r ON m.restaurant_id = r.id
@@ -578,7 +581,7 @@ export class DishesService {
           mi.name,
           mi.price,
           mi.currency,
-          mi.image_url,
+          COALESCE(ma.secure_url, mi.image_url) AS image_url,
           mi.is_popular,
           mi.is_recommended,
           COALESCE(mi.click_count, 0)::int AS click_count,
@@ -588,6 +591,7 @@ export class DishesService {
           r.rating AS restaurant_rating
           ${distSelect}
         FROM menu_items mi
+        LEFT JOIN media_assets ma ON ma.id = mi.media_asset_id
         INNER JOIN menu_sections ms ON mi.menu_section_id = ms.id
         INNER JOIN menus m ON ms.menu_id = m.id
         INNER JOIN restaurants r ON m.restaurant_id = r.id

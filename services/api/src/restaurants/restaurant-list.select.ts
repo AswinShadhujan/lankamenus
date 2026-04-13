@@ -6,6 +6,14 @@
 export const RESTAURANT_LIST_SELECT = {
   id: true,
   name_default: true,
+  media_asset_id: true,
+  media_asset: {
+    select: {
+      id: true,
+      source_type: true,
+      secure_url: true,
+    },
+  },
   /** Lets clients load `/restaurants/:id/photo` only when a Places photo exists. */
   photo_reference: true,
   city: true,
