@@ -198,6 +198,7 @@ export type SearchDropdownProps = {
   loading: boolean;
   debouncing: boolean;
   error: string | null;
+  scope?: 'all' | 'dishes' | 'restaurants';
   onNavigate?: () => void;
 };
 
@@ -207,12 +208,16 @@ function SearchDropdownInner({
   loading,
   debouncing,
   error,
+  scope = 'all',
   onNavigate,
 }: SearchDropdownProps) {
   const q = query.trim();
   const showSkeleton = debouncing || loading;
   const loaded = !showSkeleton && !error && data != null;
-  const bothEmpty = loaded && data!.dishes.length === 0 && data!.restaurants.length === 0;
+
+  const dishes = scope === 'restaurants' ? [] : (data?.dishes ?? []);
+  const restaurants = scope === 'dishes' ? [] : (data?.restaurants ?? []);
+  const bothEmpty = loaded && dishes.length === 0 && restaurants.length === 0;
   const showSections = loaded && !bothEmpty;
 
   return (
@@ -240,28 +245,36 @@ function SearchDropdownInner({
 
       {showSections ? (
         <>
-          <SectionHeader emoji="🍽" label="Dishes" />
-          {data!.dishes.length > 0 ? (
-            <ul className="px-1 pb-1 pt-0.5">
-              {data.dishes.map((d) => (
-                <DishRow key={`d-${d.menu_id}-${d.id}`} d={d} q={q} onNavigate={onNavigate} />
-              ))}
-            </ul>
-          ) : (
-            <SectionEmpty>No dishes found</SectionEmpty>
+          {scope !== 'restaurants' && (
+            <>
+              <SectionHeader emoji="🍽" label="Dishes" />
+              {dishes.length > 0 ? (
+                <ul className="px-1 pb-1 pt-0.5">
+                  {dishes.map((d) => (
+                    <DishRow key={`d-${d.menu_id}-${d.id}`} d={d} q={q} onNavigate={onNavigate} />
+                  ))}
+                </ul>
+              ) : (
+                <SectionEmpty>No dishes found</SectionEmpty>
+              )}
+            </>
           )}
 
-          <SectionDivider />
+          {scope === 'all' && <SectionDivider />}
 
-          <SectionHeader emoji="🏪" label="Restaurants" />
-          {data.restaurants.length > 0 ? (
-            <ul className="px-1 pb-2 pt-0.5">
-              {data.restaurants.map((r) => (
-                <RestaurantRow key={`r-${r.id}`} r={r} q={q} onNavigate={onNavigate} />
-              ))}
-            </ul>
-          ) : (
-            <SectionEmpty>No restaurants found</SectionEmpty>
+          {scope !== 'dishes' && (
+            <>
+              <SectionHeader emoji="🏪" label="Restaurants" />
+              {restaurants.length > 0 ? (
+                <ul className="px-1 pb-2 pt-0.5">
+                  {restaurants.map((r) => (
+                    <RestaurantRow key={`r-${r.id}`} r={r} q={q} onNavigate={onNavigate} />
+                  ))}
+                </ul>
+              ) : (
+                <SectionEmpty>No restaurants found</SectionEmpty>
+              )}
+            </>
           )}
         </>
       ) : null}

@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
+import Image from 'next/image';
 import api, { getAdminToken } from '@/lib/api';
 import { Restaurant } from '@/types/restaurant';
 import { MenuListItem } from '@/types/menu';
@@ -19,22 +20,7 @@ import {
 import { RestaurantCategoryChips } from '@/components/restaurant/RestaurantCategoryChips';
 import type { Menu } from '@/types/menu';
 import { buildGoogleMapsRestaurantUrl } from '@/lib/buildGoogleMapsRestaurantUrl';
-import { resolveBannerHref } from '@/lib/banner-cta';
-import { resolvePublicMediaUrl } from '@/lib/api';
-
 type TabId = 'menu' | 'reviews';
-
-type RestaurantPromoBanner = {
-  id: number;
-  title: string;
-  subtitle: string | null;
-  cta_label: string | null;
-  cta_type: 'restaurants_list' | 'restaurant_detail' | 'cuisine' | 'custom_url' | null;
-  cta_url: string | null;
-  restaurant_id: number | null;
-  cuisine_key: string | null;
-  media_asset: { secure_url: string } | null;
-};
 
 export default function RestaurantDetailPage() {
   const params = useParams();
@@ -49,7 +35,6 @@ export default function RestaurantDetailPage() {
   const [hasToken, setHasToken] = useState(false);
   const [isFavourite, setIsFavourite] = useState(false);
   const [favouriteLoading, setFavouriteLoading] = useState(false);
-  const [promoBanner, setPromoBanner] = useState<RestaurantPromoBanner | null>(null);
   useEffect(() => {
     setHasToken(!!getAdminToken());
   }, []);
@@ -93,13 +78,11 @@ export default function RestaurantDetailPage() {
     Promise.all([
       api.get<Restaurant>(`/restaurants/${id}`),
       api.get<MenuListItem[]>(`/restaurants/${id}/menus`),
-      api.get<RestaurantPromoBanner[]>(`/banners/restaurant/${id}/active`),
     ])
-      .then(async ([restRes, menusRes, promoRes]) => {
+      .then(async ([restRes, menusRes]) => {
         setRestaurant(restRes.data);
         const menuList = Array.isArray(menusRes.data) ? menusRes.data : [];
         setMenus(menuList);
-        setPromoBanner((promoRes.data ?? [])[0] ?? null);
 
         if (menuList.length === 0) {
           setSelectedMenu(null);
@@ -185,7 +168,7 @@ export default function RestaurantDetailPage() {
         ← Back to restaurants
       </Link>
 
-      <div className="relative mb-6 aspect-[21/9] w-full overflow-hidden rounded-xl bg-[var(--border)]">
+      <div className="relative mb-6 aspect-[16/9] w-full overflow-hidden rounded-xl bg-[var(--border)] sm:aspect-[21/9]">
         <RestaurantPhotoImage
           restaurant={restaurant}
           alt=""
@@ -194,9 +177,9 @@ export default function RestaurantDetailPage() {
       </div>
 
       <header className="mb-6">
-        <div className="flex items-start justify-between gap-4">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
           <div className="min-w-0 flex-1">
-            <h1 className="text-h1" style={{ color: 'var(--text-primary)' }}>
+            <h1 className="text-xl font-bold sm:text-h1" style={{ color: 'var(--text-primary)' }}>
               {restaurant.name_default}
             </h1>
             <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -226,26 +209,55 @@ export default function RestaurantDetailPage() {
                 {restaurant.address_line1}
               </p>
             )}
-            <p className="mt-1 text-small" style={{ color: 'var(--text-secondary)' }}>
-              Price level: {restaurant.price_level ?? '—'} · Veg: {restaurant.veg_friendly ? 'Yes' : 'No'} · Halal:{' '}
+            <p className="mt-1 text-xs sm:text-small" style={{ color: 'var(--text-secondary)' }}>
+              Price: {restaurant.price_level ?? '—'} · Veg: {restaurant.veg_friendly ? 'Yes' : 'No'} · Halal:{' '}
               {restaurant.halal_certified ? 'Yes' : 'No'}
             </p>
-            <a
-              href={googleMapsUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="mt-3 inline-flex min-h-[40px] items-center gap-2 rounded-lg border px-4 py-2 text-small font-semibold transition-opacity hover:opacity-90 active:opacity-80"
-              style={{
-                borderColor: 'var(--border)',
-                backgroundColor: 'var(--surface)',
-                color: 'var(--accent-primary)',
-              }}
-            >
-              <span aria-hidden>📍</span>
-              View on Google Maps
-            </a>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <a
+                href={googleMapsUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-small font-medium transition-opacity hover:opacity-80 active:opacity-70"
+                style={{
+                  borderColor: 'var(--border)',
+                  backgroundColor: 'var(--surface)',
+                  color: 'var(--text-secondary)',
+                }}
+                title="Open in Google Maps"
+              >
+                <Image
+                  src="/google-maps-pin.svg"
+                  alt=""
+                  width={24}
+                  height={24}
+                  className="h-6 w-6 shrink-0 object-contain"
+                />
+                <span className="hidden sm:inline">Google Maps</span>
+              </a>
+              <div className="sm:hidden">
+                {hasToken ? (
+                  <FavoriteButton
+                    isFavorite={isFavourite}
+                    loading={favouriteLoading}
+                    onClick={handleToggleFavourite}
+                  />
+                ) : (
+                  <Link
+                    href="/login"
+                    className="inline-block rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors"
+                    style={{
+                      borderColor: 'var(--border)',
+                      color: 'var(--text-secondary)',
+                    }}
+                  >
+                    Log in to save
+                  </Link>
+                )}
+              </div>
+            </div>
           </div>
-          <div className="shrink-0">
+          <div className="hidden shrink-0 sm:block">
             {hasToken ? (
               <FavoriteButton
                 isFavorite={isFavourite}
@@ -267,52 +279,6 @@ export default function RestaurantDetailPage() {
           </div>
         </div>
       </header>
-
-      {promoBanner ? (
-        <section
-          className="mb-6 overflow-hidden rounded-xl border"
-          style={{ borderColor: 'var(--border)', backgroundColor: 'var(--surface)' }}
-        >
-          <div className="flex flex-col sm:flex-row">
-            {promoBanner.media_asset?.secure_url ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                src={resolvePublicMediaUrl(promoBanner.media_asset.secure_url)}
-                alt=""
-                className="h-40 w-full object-cover sm:h-auto sm:w-56"
-              />
-            ) : null}
-            <div className="flex-1 p-4">
-              <p
-                className="mb-1 text-xs font-semibold uppercase tracking-wide"
-                style={{ color: 'var(--accent-primary)' }}
-              >
-                Promoted · Special offer
-              </p>
-              <h2 className="text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>
-                {promoBanner.title}
-              </h2>
-              {promoBanner.subtitle ? (
-                <p className="mt-1 text-sm" style={{ color: 'var(--text-secondary)' }}>
-                  {promoBanner.subtitle}
-                </p>
-              ) : null}
-              {promoBanner.cta_label ? (
-                <Link
-                  href={resolveBannerHref(promoBanner)}
-                  className="mt-3 inline-flex rounded-full px-4 py-2 text-sm font-semibold"
-                  style={{
-                    backgroundColor: 'var(--accent-primary)',
-                    color: 'white',
-                  }}
-                >
-                  {promoBanner.cta_label}
-                </Link>
-              ) : null}
-            </div>
-          </div>
-        </section>
-      ) : null}
 
       {restaurant.restaurant_extra_costs != null &&
         restaurant.restaurant_extra_costs.length > 0 && (

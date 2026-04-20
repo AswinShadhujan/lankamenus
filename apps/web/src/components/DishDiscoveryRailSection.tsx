@@ -12,7 +12,7 @@ import { Skeleton } from '@/components/ui/Skeleton';
 export type DishDiscoveryRailSectionProps = {
   title: string;
   sectionSubtitle?: string | null;
-  apiPath: '/dishes/featured' | '/dishes/trending';
+  apiPath: '/dishes/featured' | '/dishes/trending' | '/dishes/nearby';
   /** Initial geolocation attempt finished (any outcome). */
   locationReady: boolean;
   /**
@@ -296,6 +296,23 @@ export function TrendingDishesSection(
       sectionSubtitle="Getting noticed on menus"
       apiPath="/dishes/trending"
       badgeMode="trending"
+    />
+  );
+}
+
+export function NearbyDishesSection(
+  props: Omit<
+    DishDiscoveryRailSectionProps,
+    'title' | 'apiPath' | 'badgeMode' | 'sectionSubtitle'
+  >,
+) {
+  return (
+    <DishDiscoveryRailSection
+      {...props}
+      title="🍽 Dishes for you"
+      sectionSubtitle="Matching your selected categories"
+      apiPath="/dishes/nearby"
+      badgeMode="popular"
     />
   );
 }

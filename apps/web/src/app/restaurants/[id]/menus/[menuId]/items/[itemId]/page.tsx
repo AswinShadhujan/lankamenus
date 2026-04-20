@@ -144,20 +144,20 @@ export default function DishDetailPage() {
       style={{ backgroundColor: 'var(--background)', color: 'var(--text-primary)' }}
     >
       <main className="mx-auto max-w-3xl space-y-6 px-4 py-6">
-        <nav className="text-sm" style={{ color: 'var(--text-secondary)' }}>
-          <Link href="/" className="transition-opacity hover:opacity-80" style={{ color: 'var(--accent-primary)' }}>
+        <nav className="flex flex-wrap items-center gap-1 text-xs sm:text-sm" style={{ color: 'var(--text-secondary)' }}>
+          <Link href="/" className="shrink-0 transition-opacity hover:opacity-80" style={{ color: 'var(--accent-primary)' }}>
             Restaurants
           </Link>
-          <span className="mx-2">/</span>
+          <span className="mx-1 sm:mx-2">/</span>
           <Link
             href={`/restaurants/${dish.restaurant_id}`}
-            className="transition-opacity hover:opacity-80"
+            className="min-w-0 truncate transition-opacity hover:opacity-80"
             style={{ color: 'var(--accent-primary)' }}
           >
             {dish.restaurant_name}
           </Link>
-          <span className="mx-2">/</span>
-          <span style={{ color: 'var(--text-primary)' }}>{dish.name}</span>
+          <span className="mx-1 sm:mx-2">/</span>
+          <span className="min-w-0 truncate" style={{ color: 'var(--text-primary)' }}>{dish.name}</span>
         </nav>
 
         <div className="relative overflow-hidden rounded-2xl">
@@ -166,12 +166,12 @@ export default function DishDetailPage() {
             <img
               src={imageSrc}
               alt={dish.name}
-              className="h-[320px] w-full object-cover"
+              className="h-[220px] w-full object-cover sm:h-[320px]"
               onError={() => setImageError(true)}
             />
           ) : (
             <div
-              className="flex h-[320px] w-full items-center justify-center text-5xl opacity-40"
+              className="flex h-[220px] w-full items-center justify-center text-5xl opacity-40 sm:h-[320px]"
               style={{ backgroundColor: 'var(--border)' }}
             >
               🍽
@@ -180,11 +180,11 @@ export default function DishDetailPage() {
 
           <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent" />
 
-          <div className="absolute bottom-4 left-4 right-4">
-            <h1 className="text-2xl font-semibold text-white">{dish.name}</h1>
+          <div className="absolute bottom-3 left-3 right-3 sm:bottom-4 sm:left-4 sm:right-4">
+            <h1 className="text-xl font-semibold text-white sm:text-2xl">{dish.name}</h1>
 
-            <div className="mt-2 flex items-center justify-between">
-              <div className="flex flex-wrap gap-2">
+            <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex flex-wrap gap-1.5 sm:gap-2">
                 {isPopular && (
                   <span className="rounded-full bg-orange-500/90 px-2 py-1 text-xs text-white shadow">
                     🔥 Popular
@@ -219,7 +219,7 @@ export default function DishDetailPage() {
                 ) : null}
               </div>
 
-              <span className="text-lg font-semibold" style={{ color: 'var(--accent-secondary)' }}>
+              <span className="text-base font-semibold sm:text-lg" style={{ color: 'var(--accent-secondary)' }}>
                 {priceFormatted != null ? `LKR ${priceFormatted}` : 'LKR —'}
               </span>
             </div>

@@ -30,4 +30,15 @@ export class DishesController {
     }
     return this.dishes.getTrending(query);
   }
+
+  @Public()
+  @Get('nearby')
+  nearby(@Query() query: DishGeoQueryDto) {
+    if (process.env.NODE_ENV !== 'production') {
+      this.log.log(
+        `[dish-district-debug] GET /dishes/nearby cuisine=${query.cuisine ?? '∅'} district=${query.district ?? '∅'} lat=${query.lat ?? '∅'}`,
+      );
+    }
+    return this.dishes.getNearby(query);
+  }
 }

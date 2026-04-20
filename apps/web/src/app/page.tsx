@@ -10,13 +10,12 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { HomeSectionHeader } from '@/components/home/HomeSectionHeader';
 import { HomeCategoryStrip } from '@/components/home/HomeCategoryStrip';
-import { UberEatsPill, UberEatsPillRow } from '@/components/ui/UberEatsPill';
-import { HeroBanner } from '@/components/home/HeroBanner';
-import { useBanners } from '@/hooks/useBanners';
+import { UberEatsPill } from '@/components/ui/UberEatsPill';
 import { HorizontalRestaurantSection } from '@/components/shared/HorizontalRestaurantSection';
 import {
   PopularDishesSection,
   TrendingDishesSection,
+  NearbyDishesSection,
 } from '@/components/DishDiscoveryRailSection';
 import { useIntersectionLoadMore } from '@/hooks/useIntersectionLoadMore';
 import { getLocationLabel } from '@/lib/getLocationLabel';
@@ -38,6 +37,8 @@ import {
 import { buildHomeGeoQuery, mergeDistrictAndGeo } from '@/lib/homeLocationApi';
 
 const DEFAULT_RADIUS_KM = 10;
+/** Strict radius for category-driven dish rail only (does not change restaurant grid / rails). */
+const CATEGORY_NEARBY_DISH_RADIUS_KM = 5;
 
 const NEARBY_UNSUPPORTED_MESSAGE =
   'This browser does not support location. Use District to narrow results.';
@@ -48,7 +49,7 @@ const RAIL_PAGE_SIZE = 16;
 const SECTION_MB = 'mb-8';
 const GAP_EL = 'gap-3';
 /** Matches All Restaurants grid + skeleton grid (no layout shift). */
-const ALL_RESTAURANTS_GRID = `grid grid-cols-1 items-stretch sm:grid-cols-2 sm:gap-4 lg:grid-cols-3 ${GAP_EL}`;
+const ALL_RESTAURANTS_GRID = `grid grid-cols-1 items-stretch sm:grid-cols-2 sm:gap-4 lg:grid-cols-3 xl:grid-cols-4 ${GAP_EL}`;
 
 type HomeSortMode = 'default' | 'popular' | 'top_rated' | 'trending' | 'distance';
 
@@ -93,7 +94,6 @@ export default function HomePage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const hasMounted = useHasMounted();
-  const apiSlides = useBanners();
   /** After mount: matches URL (navbar). Before mount: empty so SSR matches first client paint. */
   const urlQuery = hasMounted ? (searchParams?.get('q') ?? '') : '';
   /** Category filter from URL: `?categories=Kottu,Biryani` */
@@ -131,6 +131,7 @@ export default function HomePage() {
 
   const [selectedSort, setSelectedSort] = useState<HomeSortMode>('default');
   const [filterHighRating, setFilterHighRating] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
 
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   const loadMoreRef = useRef<() => void>(() => {});
@@ -160,6 +161,24 @@ export default function HomePage() {
     () => mergeDistrictAndGeo(selectedDistricts, geoForApi),
     [selectedDistricts, geoForApi],
   );
+
+  /**
+   * Category dish rail: strict 5 km when coords are trusted; otherwise district / island-wide + cuisine only.
+   */
+  const categoryNearbyDishesQuery = useMemo((): Record<string, string | number> => {
+    const geoSlice =
+      userLocation.status === 'granted'
+        ? {
+            lat: userLocation.lat,
+            lng: userLocation.lng,
+            radius_km: CATEGORY_NEARBY_DISH_RADIUS_KM,
+          }
+        : {};
+    return {
+      ...mergeDistrictAndGeo(selectedDistricts, geoSlice),
+      cuisine: selectedCategories.join(','),
+    };
+  }, [userLocation, selectedDistricts, selectedCategories]);
 
   /** All Restaurants grid (adds search, categories, sort). */
   const buildFeedParams = useCallback(() => {
@@ -450,20 +469,29 @@ export default function HomePage() {
 
   const onSortPopular = () => {
     setLocationError(null);
-    setSelectedSort((s) => (s === 'popular' ? 'default' : 'popular'));
-    scheduleScrollToAllRestaurants();
+    setSelectedSort((s) => {
+      if (s === 'popular') return 'default';
+      scheduleScrollToAllRestaurants();
+      return 'popular';
+    });
   };
 
   const onSortTopRated = () => {
     setLocationError(null);
-    setSelectedSort((s) => (s === 'top_rated' ? 'default' : 'top_rated'));
-    scheduleScrollToAllRestaurants();
+    setSelectedSort((s) => {
+      if (s === 'top_rated') return 'default';
+      scheduleScrollToAllRestaurants();
+      return 'top_rated';
+    });
   };
 
   const onSortTrending = () => {
     setLocationError(null);
-    setSelectedSort((s) => (s === 'trending' ? 'default' : 'trending'));
-    scheduleScrollToAllRestaurants();
+    setSelectedSort((s) => {
+      if (s === 'trending') return 'default';
+      scheduleScrollToAllRestaurants();
+      return 'trending';
+    });
   };
 
   /**
@@ -475,7 +503,6 @@ export default function HomePage() {
       setLocationError(null);
       clearStoredNearbyGeoMeta();
       setSelectedSort('default');
-      scheduleScrollToAllRestaurants();
       return;
     }
 
@@ -545,6 +572,12 @@ export default function HomePage() {
             ? 'Nearby'
             : null;
 
+  const activeFilterCount =
+    (selectedSort !== 'default' ? 1 : 0) +
+    selectedCategories.length +
+    selectedDistricts.length +
+    (filterHighRating ? 1 : 0);
+
   const hasActiveFilterSummary =
     selectedCategories.length > 0 ||
     selectedSort !== 'default' ||
@@ -602,172 +635,163 @@ export default function HomePage() {
     router.replace(query ? `/?${query}` : '/', { scroll: false });
   };
 
-  const stickyBarBg = 'color-mix(in srgb, var(--background) 94%, transparent)';
-
   return (
-    <main className="mx-auto max-w-6xl px-4 py-4 sm:px-6 sm:py-6">
-      {apiSlides != null && apiSlides.length > 0 ? (
-        <section className="mb-5">
-          <HeroBanner slides={apiSlides} />
-        </section>
-      ) : null}
-
-      <section className="mb-4">
-        <div className="flex items-center gap-3">
+    <main className="mx-auto max-w-screen-xl px-4 py-4 sm:px-6 sm:py-6">
+      <section className="mb-4 flex items-center gap-3">
+        <button
+          type="button"
+          onClick={() => setFiltersOpen((o) => !o)}
+          className="inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-primary)]"
+          style={{
+            borderColor: filtersOpen || activeFilterCount > 0 ? 'var(--accent-primary)' : 'var(--border)',
+            backgroundColor:
+              filtersOpen || activeFilterCount > 0
+                ? 'color-mix(in srgb, var(--accent-primary) 10%, var(--surface))'
+                : 'var(--surface)',
+            color: 'var(--text-primary)',
+          }}
+          aria-expanded={filtersOpen}
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+            <line x1="4" y1="6" x2="20" y2="6" />
+            <line x1="8" y1="12" x2="16" y2="12" />
+            <line x1="11" y1="18" x2="13" y2="18" />
+          </svg>
+          Filters
+          {activeFilterCount > 0 && (
+            <span
+              className="inline-flex h-5 min-w-[20px] items-center justify-center rounded-full px-1 text-xs font-semibold"
+              style={{ backgroundColor: 'var(--accent-primary)', color: '#fff' }}
+            >
+              {activeFilterCount}
+            </span>
+          )}
+        </button>
+        {activeFilterCount > 0 && (
           <button
             type="button"
-            role="switch"
-            aria-checked={districtFilterEnabled}
-            onClick={() => setDistrictFilterOn(!districtFilterEnabled)}
-            className="flex shrink-0 items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-primary)]"
-            style={{
-              borderColor: districtFilterEnabled ? 'var(--accent-primary)' : 'var(--border)',
-              backgroundColor: districtFilterEnabled
-                ? 'color-mix(in srgb, var(--accent-primary) 12%, transparent)'
-                : 'var(--surface)',
-              color: 'var(--text-primary)',
-            }}
+            onClick={clearAllFeedFilters}
+            className="text-xs font-medium transition-opacity hover:opacity-70"
+            style={{ color: 'var(--accent-primary)' }}
           >
-            <span
-              className="relative inline-flex h-4 w-7 shrink-0 rounded-full transition-colors"
-              style={{
-                backgroundColor: districtFilterEnabled ? 'var(--accent-primary)' : 'var(--border)',
-              }}
-              aria-hidden
-            >
-              <span
-                className="absolute top-0.5 h-3 w-3 rounded-full bg-white shadow transition-transform duration-200"
-                style={{
-                  left: districtFilterEnabled ? 'calc(100% - 0.875rem)' : '0.125rem',
-                }}
-              />
-            </span>
-            <span className="whitespace-nowrap">District</span>
+            Clear all
           </button>
-          {districtFilterEnabled && (
-            <select
-              id="home-district-select"
-              className="min-h-[36px] min-w-0 flex-1 rounded-lg border px-2.5 py-1.5 text-sm font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-[var(--accent-primary)] sm:max-w-xs"
-              style={{
-                borderColor: 'var(--border)',
-                backgroundColor: 'var(--surface)',
-                color: 'var(--text-primary)',
-              }}
-              value={selectedDistricts[0] ?? ''}
-              onChange={(e) => onDistrictSelectChange(e.target.value)}
-              aria-label="District"
-            >
-              <option value="">All districts</option>
-              {districts.map((d) => (
-                <option key={d.id} value={d.name}>
-                  {d.name}
-                </option>
-              ))}
-            </select>
-          )}
-        </div>
+        )}
       </section>
 
-      <div
-        className={`sticky top-0 z-30 -mx-4 mb-6 border-b px-4 py-3 backdrop-blur-md sm:-mx-6 sm:px-6 ${SECTION_MB}`}
-        style={{
-          borderColor: 'var(--border)',
-          backgroundColor: stickyBarBg,
-        }}
-      >
-        <UberEatsPillRow
-          title="Sort by"
-          className="!mb-0"
-          trailingAction={<SeeAllRestaurantsButton onClick={scrollToAllRestaurants} />}
-        >
-          <UberEatsPill
-            label="Popular"
-            selected={selectedSort === 'popular'}
-            onClick={onSortPopular}
-          />
-          <UberEatsPill
-            label="Top Rated"
-            selected={selectedSort === 'top_rated'}
-            onClick={onSortTopRated}
-          />
-          <UberEatsPill
-            label="Trending"
-            selected={selectedSort === 'trending'}
-            onClick={onSortTrending}
-          />
-          <UberEatsPill
-            label="Nearby (strict)"
-            selected={selectedSort === 'distance'}
-            onClick={onSortNearby}
-            disabled={userLocation.status === 'unknown'}
-          />
-        </UberEatsPillRow>
-        {userLocation.status === 'unknown' && (
-          <p className="mt-2 text-xs" style={{ color: 'var(--text-secondary)' }} role="status">
-            Checking location permission…
-          </p>
-        )}
-        {userLocation.status === 'granted' && selectedSort !== 'distance' && (
-          <p className="mt-2 text-xs leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
-            Using your location for rankings across Sri Lanka. Nearby turns on strict distance filtering within a
-            set radius.
-          </p>
-        )}
-        {userLocation.status === 'low_accuracy' && selectedSort !== 'distance' && (
-          <p className="mt-2 text-xs leading-relaxed" style={{ color: 'var(--text-secondary)' }} role="status">
-            Location accuracy is low — showing all results. Nearby needs a more precise fix (about{' '}
-            {MAX_ACCEPTABLE_ACCURACY_METERS / 1000} km or better).
-            {userLocation.accuracyM >= 0 && (
-              <>
-                {' '}
-                Last reading: ~{Math.round(userLocation.accuracyM)} m.
-              </>
-            )}
-          </p>
-        )}
-        {(userLocation.status === 'denied' || userLocation.status === 'unsupported') &&
-          selectedSort !== 'distance' && (
-            <p className="mt-2 text-xs leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
-              Location unavailable — showing island-wide results. Use the district filter above, or enable location and
-              refresh.
-            </p>
-          )}
-        {locationError && (
-          <p className="mt-3 rounded-lg border px-3 py-2 text-sm" role="alert" style={{ borderColor: 'var(--border)', color: 'var(--text-primary)' }}>
-            {locationError}
-          </p>
-        )}
-        {strictNearbyReady && (
-          <div className="mt-3">
-            <p className="text-sm font-medium" style={{ color: 'var(--text-primary)' }}>
-              Strict mode: restaurants and dishes within {DEFAULT_RADIUS_KM} km of your current position.
-            </p>
-            <p className="mt-0.5 text-xs" style={{ color: 'var(--text-secondary)' }}>
-              List, dish rails, and restaurant rails use the same coordinates — no silent island-wide fallback.
-            </p>
-          </div>
-        )}
-      </div>
-
-      <section className={SECTION_MB}>
+      {filtersOpen && (
         <div
-          className="rounded-2xl border p-4"
+          className={`rounded-2xl border p-4 ${SECTION_MB}`}
           style={{ borderColor: 'var(--border)', backgroundColor: 'var(--surface)' }}
         >
-          <div className="mb-3 flex items-center justify-between gap-2">
-            <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--text-secondary)' }}>
-              Categories
-            </p>
-            <SeeAllRestaurantsButton onClick={scrollToAllRestaurants} />
+          <div className="space-y-5">
+            <div>
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--text-secondary)' }}>
+                Sort by
+              </p>
+              <div className="flex flex-wrap gap-2">
+                <UberEatsPill label="Popular" selected={selectedSort === 'popular'} onClick={onSortPopular} />
+                <UberEatsPill label="Top Rated" selected={selectedSort === 'top_rated'} onClick={onSortTopRated} />
+                <UberEatsPill label="Trending" selected={selectedSort === 'trending'} onClick={onSortTrending} />
+                <UberEatsPill
+                  label="Nearby (strict)"
+                  selected={selectedSort === 'distance'}
+                  onClick={onSortNearby}
+                  disabled={userLocation.status === 'unknown'}
+                />
+              </div>
+              {locationError && (
+                <p className="mt-2 rounded-lg border px-3 py-2 text-sm" role="alert" style={{ borderColor: 'var(--border)', color: 'var(--text-primary)' }}>
+                  {locationError}
+                </p>
+              )}
+              {strictNearbyReady && (
+                <p className="mt-2 text-xs" style={{ color: 'var(--text-secondary)' }}>
+                  Strict mode: within {DEFAULT_RADIUS_KM} km of your position.
+                </p>
+              )}
+            </div>
+
+            <div>
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--text-secondary)' }}>
+                Categories
+              </p>
+              <HomeCategoryStrip selected={selectedCategories} onToggle={toggleCategory} />
+            </div>
+
+            <div>
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--text-secondary)' }}>
+                District
+              </p>
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={districtFilterEnabled}
+                  onClick={() => setDistrictFilterOn(!districtFilterEnabled)}
+                  className="flex shrink-0 items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-primary)]"
+                  style={{
+                    borderColor: districtFilterEnabled ? 'var(--accent-primary)' : 'var(--border)',
+                    backgroundColor: districtFilterEnabled
+                      ? 'color-mix(in srgb, var(--accent-primary) 12%, transparent)'
+                      : 'var(--background)',
+                    color: 'var(--text-primary)',
+                  }}
+                >
+                  <span
+                    className="relative inline-flex h-4 w-7 shrink-0 rounded-full transition-colors"
+                    style={{ backgroundColor: districtFilterEnabled ? 'var(--accent-primary)' : 'var(--border)' }}
+                    aria-hidden
+                  >
+                    <span
+                      className="absolute top-0.5 h-3 w-3 rounded-full bg-white shadow transition-transform duration-200"
+                      style={{ left: districtFilterEnabled ? 'calc(100% - 0.875rem)' : '0.125rem' }}
+                    />
+                  </span>
+                  <span className="whitespace-nowrap">Filter by district</span>
+                </button>
+                {districtFilterEnabled && (
+                  <select
+                    id="home-district-select"
+                    className="min-h-[36px] min-w-0 flex-1 rounded-lg border px-2.5 py-1.5 text-sm font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-[var(--accent-primary)] sm:max-w-xs"
+                    style={{
+                      borderColor: 'var(--border)',
+                      backgroundColor: 'var(--background)',
+                      color: 'var(--text-primary)',
+                    }}
+                    value={selectedDistricts[0] ?? ''}
+                    onChange={(e) => onDistrictSelectChange(e.target.value)}
+                    aria-label="District"
+                  >
+                    <option value="">All districts</option>
+                    {districts.map((d) => (
+                      <option key={d.id} value={d.name}>
+                        {d.name}
+                      </option>
+                    ))}
+                  </select>
+                )}
+              </div>
+            </div>
           </div>
-          <HomeCategoryStrip selected={selectedCategories} onToggle={toggleCategory} />
         </div>
-      </section>
+      )}
 
       {fetchError && (
         <div className={SECTION_MB}>
           <ErrorState message={fetchError} onRetry={refetchFeed} />
         </div>
+      )}
+
+      {selectedCategories.length > 0 && (
+        <section className={SECTION_MB}>
+          <NearbyDishesSection
+            locationReady={locationReady}
+            apiQuery={categoryNearbyDishesQuery}
+            locationLabel={railLocationLabel}
+            onSeeAll={scrollToAllRestaurants}
+          />
+        </section>
       )}
 
       <section

@@ -32,4 +32,10 @@ export class DishGeoQueryDto {
   @IsString()
   @MaxLength(500)
   district?: string;
+
+  /** Comma-separated cuisine/category tags to filter dishes by restaurant cuisine. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  cuisine?: string;
 }

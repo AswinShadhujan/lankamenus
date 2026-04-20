@@ -257,6 +257,26 @@ export class DishesService {
     });
   }
 
+  /** Comma-separated cuisine tags → trimmed, de-duped array. */
+  private parseCuisineList(query: DishGeoQueryDto): string[] {
+    const raw = query.cuisine?.trim();
+    if (!raw) return [];
+    return [...new Set(raw.split(',').map((s) => s.trim()).filter(Boolean))].slice(0, 20);
+  }
+
+  /**
+   * SQL filter: restaurant must have at least one of the given cuisine tags.
+   * `restaurants.cuisine_tags` is stored as a TEXT[] column.
+   */
+  private buildCuisineFilter(tags: string[]): Prisma.Sql {
+    if (tags.length === 0) return Prisma.sql``;
+    const clauses = tags.map(
+      (t) => Prisma.sql`EXISTS (SELECT 1 FROM unnest(r.cuisine_tags) AS ct WHERE LOWER(TRIM(ct)) = LOWER(${t}))`,
+    );
+    if (clauses.length === 1) return Prisma.sql`AND ${clauses[0]}`;
+    return Prisma.sql`AND (${Prisma.join(clauses, ' OR ')})`;
+  }
+
   /** Same parsing as restaurant search: comma-separated, trimmed, de-duped. */
   private parseDistrictList(query: DishGeoQueryDto): string[] {
     const raw = query.district?.trim();
@@ -641,5 +661,84 @@ export class DishesService {
     }
 
     return mapped;
+  }
+
+  /**
+   * Location-aware dish search filtered by cuisine tags.
+   * Used by the homepage when a category filter is selected.
+   * Falls back to all available dishes if no geo is provided.
+   */
+  async getNearby(query: DishGeoQueryDto = {}): Promise<DishDiscoveryRow[]> {
+    const strictGeo = this.parseStrictGeo(query);
+    const biasPoint = this.parseBiasPoint(query);
+    const geoFilter =
+      strictGeo != null ? this.buildLocationFilter(strictGeo) : Prisma.sql``;
+    const districtNames = this.parseDistrictList(query);
+    const districtFilter = this.buildDistrictFilter(districtNames);
+    const cuisineTags = this.parseCuisineList(query);
+    const cuisineFilter = this.buildCuisineFilter(cuisineTags);
+
+    const geoLat = strictGeo?.lat ?? biasPoint?.lat;
+    const geoLng = strictGeo?.lng ?? biasPoint?.lng;
+    const useDishGeoBlend = geoLat != null && geoLng != null;
+    const distSelect = useDishGeoBlend
+      ? this.dishRestDistanceKmSelectSql(geoLat, geoLng)
+      : Prisma.sql``;
+    const blendMode: 'none' | 'bias' | 'strict' = strictGeo
+      ? 'strict'
+      : useDishGeoBlend
+        ? 'bias'
+        : 'none';
+    const poolLimit = useDishGeoBlend ? DISH_GEO_BLEND_POOL : 20;
+    const dishGeoKind: 'bias' | 'strict' =
+      blendMode === 'strict' ? 'strict' : 'bias';
+
+    const rows = await this.prisma.$queryRaw<
+      (RawDishRow & { restaurant_popular_score: number | null; rest_dist_km?: unknown })[]
+    >(Prisma.sql`
+      SELECT
+        mi.id,
+        mi.name,
+        mi.price,
+        mi.currency,
+        COALESCE(ma.secure_url, mi.image_url) AS image_url,
+        mi.is_popular,
+        mi.is_recommended,
+        COALESCE(mi.click_count, 0)::int AS click_count,
+        ms.menu_id,
+        r.id AS restaurant_id,
+        r.name_default AS restaurant_name,
+        r.rating AS restaurant_rating,
+        r.popular_score AS restaurant_popular_score
+        ${distSelect}
+      FROM menu_items mi
+      LEFT JOIN media_assets ma ON ma.id = mi.media_asset_id
+      INNER JOIN menu_sections ms ON mi.menu_section_id = ms.id
+      INNER JOIN menus m ON ms.menu_id = m.id
+      INNER JOIN restaurants r ON m.restaurant_id = r.id
+      WHERE m.is_active = true
+        AND mi.is_available = true
+        ${geoFilter}
+        ${districtFilter}
+        ${cuisineFilter}
+      ORDER BY
+        mi.is_popular DESC,
+        mi.is_recommended DESC,
+        r.popular_score DESC NULLS LAST
+        ${this.dishPoolDistanceOrderSql(useDishGeoBlend)},
+        mi.id ASC
+      LIMIT ${poolLimit}
+    `);
+
+    let parsed = this.parseDishRestDistKm(rows);
+    if (useDishGeoBlend && parsed.length > 1) {
+      parsed.sort(
+        (a, b) =>
+          this.featuredDishBlend(b, dishGeoKind) -
+          this.featuredDishBlend(a, dishGeoKind),
+      );
+    }
+
+    return parsed.slice(0, 16).map((r) => this.mapRow(r));
   }
 }

@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 36 36" role="img" aria-hidden="true">
+  <!-- Google Mapsstyle location pin (product red #EA4335) for Open in Google Maps actions -->
+  <path
+    fill="#EA4335"
+    d="M18 2C11.37 2 6 7.16 6 13.58c0 8.42 10.63 18.95 11.14 19.45.48.47 1.24.47 1.72 0 .51-.5 11.14-11.03 11.14-19.45C30 7.16 24.63 2 18 2zm0 17.25a5.25 5.25 0 1 1 0-10.5 5.25 5.25 0 0 1 0 10.5z"
+  />
+  <circle fill="#fff" cx="18" cy="14.75" r="2.85" />
+</svg>
