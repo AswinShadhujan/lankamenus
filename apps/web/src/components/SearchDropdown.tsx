@@ -198,7 +198,7 @@ export type SearchDropdownProps = {
   loading: boolean;
   debouncing: boolean;
   error: string | null;
-  scope?: 'all' | 'dishes' | 'restaurants';
+  scope?: 'dishes' | 'restaurants';
   onNavigate?: () => void;
 };
 
@@ -208,15 +208,15 @@ function SearchDropdownInner({
   loading,
   debouncing,
   error,
-  scope = 'all',
+  scope = 'restaurants',
   onNavigate,
 }: SearchDropdownProps) {
   const q = query.trim();
   const showSkeleton = debouncing || loading;
   const loaded = !showSkeleton && !error && data != null;
 
-  const dishes = scope === 'restaurants' ? [] : (data?.dishes ?? []);
-  const restaurants = scope === 'dishes' ? [] : (data?.restaurants ?? []);
+  const dishes = scope === 'dishes' ? (data?.dishes ?? []) : [];
+  const restaurants = scope === 'restaurants' ? (data?.restaurants ?? []) : [];
   const bothEmpty = loaded && dishes.length === 0 && restaurants.length === 0;
   const showSections = loaded && !bothEmpty;
 
@@ -245,7 +245,7 @@ function SearchDropdownInner({
 
       {showSections ? (
         <>
-          {scope !== 'restaurants' && (
+          {scope === 'dishes' ? (
             <>
               <SectionHeader emoji="🍽" label="Dishes" />
               {dishes.length > 0 ? (
@@ -258,11 +258,7 @@ function SearchDropdownInner({
                 <SectionEmpty>No dishes found</SectionEmpty>
               )}
             </>
-          )}
-
-          {scope === 'all' && <SectionDivider />}
-
-          {scope !== 'dishes' && (
+          ) : (
             <>
               <SectionHeader emoji="🏪" label="Restaurants" />
               {restaurants.length > 0 ? (

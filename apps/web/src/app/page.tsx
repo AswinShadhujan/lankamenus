@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
+import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import api, { getAdminToken, getApiBaseUrl } from '@/lib/api';
 import { Restaurant, District, type RestaurantsListResponse } from '@/types/restaurant';
@@ -46,10 +47,10 @@ const RATING_THRESHOLD = 4.5;
 const GRID_PAGE_SIZE = 12;
 const RAIL_PAGE_SIZE = 16;
 
-const SECTION_MB = 'mb-8';
-const GAP_EL = 'gap-3';
+const SECTION_MB = 'mb-6';
+const GAP_EL = 'gap-2';
 /** Matches All Restaurants grid + skeleton grid (no layout shift). */
-const ALL_RESTAURANTS_GRID = `grid grid-cols-1 items-stretch sm:grid-cols-2 sm:gap-4 lg:grid-cols-3 xl:grid-cols-4 ${GAP_EL}`;
+const ALL_RESTAURANTS_GRID = `grid grid-cols-1 items-stretch sm:grid-cols-2 sm:gap-3 lg:grid-cols-3 xl:grid-cols-4 ${GAP_EL}`;
 
 type HomeSortMode = 'default' | 'popular' | 'top_rated' | 'trending' | 'distance';
 
@@ -132,6 +133,7 @@ export default function HomePage() {
   const [selectedSort, setSelectedSort] = useState<HomeSortMode>('default');
   const [filterHighRating, setFilterHighRating] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const [categoryPopupOpen, setCategoryPopupOpen] = useState(false);
 
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   const loadMoreRef = useRef<() => void>(() => {});
@@ -166,7 +168,7 @@ export default function HomePage() {
    * Category dish rail: strict 5 km when coords are trusted; otherwise district / island-wide + cuisine only.
    */
   const categoryNearbyDishesQuery = useMemo((): Record<string, string | number> => {
-    const geoSlice =
+    const geoSlice: Record<string, string | number> =
       userLocation.status === 'granted'
         ? {
             lat: userLocation.lat,
@@ -464,6 +466,7 @@ export default function HomePage() {
       ? selectedCategories.filter((c) => c !== category)
       : [...selectedCategories, category];
     setCategoriesInUrl(next);
+    setCategoryPopupOpen(next.length > 0);
     scheduleScrollToAllRestaurants();
   };
 
@@ -598,6 +601,7 @@ export default function HomePage() {
   }, [gridRestaurants, filterHighRating]);
 
   const displayRestaurants = ratingFilteredGrid;
+  const popupRestaurants = useMemo(() => displayRestaurants.slice(0, 6), [displayRestaurants]);
 
   const railLocationLabel = useMemo(() => {
     if (strictNearbyReady) {
@@ -634,6 +638,15 @@ export default function HomePage() {
     const query = params.toString();
     router.replace(query ? `/?${query}` : '/', { scroll: false });
   };
+
+  useEffect(() => {
+    if (!categoryPopupOpen) return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [categoryPopupOpen]);
 
   return (
     <main className="mx-auto max-w-screen-xl px-4 py-4 sm:px-6 sm:py-6">
@@ -681,12 +694,12 @@ export default function HomePage() {
 
       {filtersOpen && (
         <div
-          className={`rounded-2xl border p-4 ${SECTION_MB}`}
+          className={`rounded-xl border px-3 py-3 ${SECTION_MB}`}
           style={{ borderColor: 'var(--border)', backgroundColor: 'var(--surface)' }}
         >
-          <div className="space-y-5">
-            <div>
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--text-secondary)' }}>
+          <div>
+            <div className="pb-3">
+              <p className="mb-1.5 text-[11px] font-medium leading-tight" style={{ color: 'var(--text-secondary)' }}>
                 Sort by
               </p>
               <div className="flex flex-wrap gap-2">
@@ -701,26 +714,42 @@ export default function HomePage() {
                 />
               </div>
               {locationError && (
-                <p className="mt-2 rounded-lg border px-3 py-2 text-sm" role="alert" style={{ borderColor: 'var(--border)', color: 'var(--text-primary)' }}>
+                <p
+                  className="mt-2 rounded-md border px-3 py-2 text-sm"
+                  role="alert"
+                  style={{
+                    borderColor: 'color-mix(in srgb, var(--border) 80%, transparent)',
+                    color: 'var(--text-primary)',
+                  }}
+                >
                   {locationError}
                 </p>
               )}
               {strictNearbyReady && (
-                <p className="mt-2 text-xs" style={{ color: 'var(--text-secondary)' }}>
+                <p className="mt-1.5 text-[11px] leading-snug" style={{ color: 'var(--text-secondary)' }}>
                   Strict mode: within {DEFAULT_RADIUS_KM} km of your position.
                 </p>
               )}
             </div>
 
-            <div>
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--text-secondary)' }}>
-                Categories
+            <div
+              className="border-t pt-3"
+              style={{ borderColor: 'color-mix(in srgb, var(--border) 55%, transparent)' }}
+            >
+              <p className="mb-0.5 text-[11px] font-medium leading-tight" style={{ color: 'var(--text-secondary)' }}>
+                Restaurant cuisine
+              </p>
+              <p className="mb-1.5 text-[11px] leading-snug opacity-90" style={{ color: 'var(--text-secondary)' }}>
+                Tags describe venues (not a full dish taxonomy).
               </p>
               <HomeCategoryStrip selected={selectedCategories} onToggle={toggleCategory} />
             </div>
 
-            <div>
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--text-secondary)' }}>
+            <div
+              className="border-t pt-3"
+              style={{ borderColor: 'color-mix(in srgb, var(--border) 55%, transparent)' }}
+            >
+              <p className="mb-1.5 text-[11px] font-medium leading-tight" style={{ color: 'var(--text-secondary)' }}>
                 District
               </p>
               <div className="flex items-center gap-3">
@@ -783,19 +812,109 @@ export default function HomePage() {
         </div>
       )}
 
-      {selectedCategories.length > 0 && (
-        <section className={SECTION_MB}>
-          <NearbyDishesSection
-            locationReady={locationReady}
-            apiQuery={categoryNearbyDishesQuery}
-            locationLabel={railLocationLabel}
-            onSeeAll={scrollToAllRestaurants}
+      {categoryPopupOpen && selectedCategories.length > 0 && (
+        <div className="fixed inset-0 z-[70]">
+          <button
+            type="button"
+            aria-label="Close cuisine results"
+            onClick={() => setCategoryPopupOpen(false)}
+            className="absolute inset-0 bg-black/45"
           />
-        </section>
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-label="Restaurant cuisine results"
+            className="absolute inset-x-0 bottom-0 top-8 overflow-y-auto rounded-t-3xl border p-4 sm:inset-8 sm:rounded-2xl sm:p-6"
+            style={{
+              borderColor: 'var(--border)',
+              backgroundColor: 'var(--background)',
+            }}
+          >
+            <div className="mx-auto max-w-screen-xl">
+              <div className="mb-4 flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--text-secondary)' }}>
+                    Cuisine filters
+                  </p>
+                  <h2 className="text-lg font-semibold sm:text-xl" style={{ color: 'var(--text-primary)' }}>
+                    Nearby dishes and matching restaurants
+                  </h2>
+                  <p className="mt-1 text-sm" style={{ color: 'var(--text-secondary)' }}>
+                    {selectedCategories.join(', ')}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setCategoryPopupOpen(false)}
+                  className="inline-flex min-h-[40px] items-center rounded-full border px-3 py-1.5 text-sm font-medium transition-opacity hover:opacity-80"
+                  style={{ borderColor: 'var(--border)', color: 'var(--text-primary)' }}
+                >
+                  Close
+                </button>
+              </div>
+
+              <section className="mb-6">
+                <NearbyDishesSection
+                  locationReady={locationReady}
+                  apiQuery={categoryNearbyDishesQuery}
+                  locationLabel={railLocationLabel}
+                  onSeeAll={scrollToAllRestaurants}
+                />
+              </section>
+
+              <section>
+                <HomeSectionHeader
+                  title="Matching restaurants"
+                  subtitle="Restaurants tagged with the selected cuisine filters"
+                />
+                {feedLoading ? (
+                  <ul className={ALL_RESTAURANTS_GRID}>
+                    {Array.from({ length: 4 }).map((_, i) => (
+                      <li key={`popup-restaurant-skeleton-${i}`} className="flex min-h-0">
+                        <SkeletonCard variant="grid" className="w-full" />
+                      </li>
+                    ))}
+                  </ul>
+                ) : popupRestaurants.length > 0 ? (
+                  <>
+                    <ul className={`${ALL_RESTAURANTS_GRID} mt-2`}>
+                      {popupRestaurants.map((r) => (
+                        <li key={`popup-restaurant-${r.id}`} className="flex min-h-0">
+                          <RestaurantCard
+                            restaurant={r}
+                            isFavorite={hasToken && favouriteIds.has(r.id)}
+                            favoriteLoading={favouriteLoadingId === r.id}
+                            onFavoriteClick={() => handleToggleFavourite(r)}
+                            showFavorite={hasToken}
+                            className="w-full"
+                          />
+                        </li>
+                      ))}
+                    </ul>
+                    <div className="mt-3">
+                      <Link
+                        href="/#all-restaurants"
+                        onClick={() => setCategoryPopupOpen(false)}
+                        className="text-sm font-semibold transition-opacity hover:opacity-80"
+                        style={{ color: 'var(--accent-primary)' }}
+                      >
+                        See full restaurant results
+                      </Link>
+                    </div>
+                  </>
+                ) : (
+                  <p className="mt-2 text-sm" style={{ color: 'var(--text-secondary)' }}>
+                    No matching restaurants loaded yet. Try removing some filters or changing location settings.
+                  </p>
+                )}
+              </section>
+            </div>
+          </div>
+        </div>
       )}
 
       <section
-        className={`${SECTION_MB} space-y-8 transition-opacity duration-300 ease-out ${
+        className={`${SECTION_MB} space-y-6 transition-opacity duration-300 ease-out ${
           softenDiscoveryRails ? 'opacity-[0.72]' : 'opacity-100'
         }`}
       >
@@ -854,129 +973,122 @@ export default function HomePage() {
 
       <section
         id="all-restaurants"
-        className="scroll-mt-28 border-t pt-8 md:scroll-mt-32 md:pt-8"
+        className="scroll-mt-28 border-t pt-6 md:scroll-mt-32 md:pt-6"
         style={{ borderColor: 'var(--border)' }}
       >
         {hasActiveFilterSummary && (
-          <div
-            className="mb-4 rounded-xl border px-3 py-3 sm:px-4"
-            style={{
-              borderColor: 'var(--border)',
-              backgroundColor: 'color-mix(in srgb, var(--accent-primary) 6%, var(--surface))',
-            }}
-          >
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-              <div className="min-w-0 flex-1">
-                <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--text-secondary)' }}>
-                  Showing results for
-                </p>
-                <div className={`mt-2 flex flex-wrap items-center ${GAP_EL}`}>
-                  {selectedCategories.map((cat) => (
-                    <button
-                      key={cat}
-                      type="button"
-                      onClick={() => removeCategory(cat)}
-                      className="inline-flex min-h-[36px] max-w-full items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors hover:opacity-90 active:opacity-80"
-                      style={{
-                        borderColor: 'var(--border)',
-                        backgroundColor: 'var(--background)',
-                        color: 'var(--text-primary)',
-                      }}
-                      aria-label={`Remove category ${cat}`}
-                    >
-                      <span className="truncate">{cat}</span>
-                      <span className="shrink-0 text-[var(--text-secondary)]" aria-hidden>
-                        ✕
-                      </span>
-                    </button>
-                  ))}
-                  {selectedDistricts.map((d) => (
-                    <button
-                      key={`d-${d}`}
-                      type="button"
-                      onClick={() => removeDistrict(d)}
-                      className="inline-flex min-h-[36px] max-w-full items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors hover:opacity-90 active:opacity-80"
-                      style={{
-                        borderColor: 'var(--border)',
-                        backgroundColor: 'var(--background)',
-                        color: 'var(--text-primary)',
-                      }}
-                      aria-label={`Remove district ${d}`}
-                    >
-                      <span className="truncate">{d}</span>
-                      <span className="shrink-0 text-[var(--text-secondary)]" aria-hidden>
-                        ✕
-                      </span>
-                    </button>
-                  ))}
-                  {urlQuery.trim().length > 0 && (
-                    <button
-                      type="button"
-                      onClick={clearSearchQuery}
-                      className="inline-flex min-h-[36px] max-w-full items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors hover:opacity-90 active:opacity-80"
-                      style={{
-                        borderColor: 'var(--border)',
-                        backgroundColor: 'var(--background)',
-                        color: 'var(--text-primary)',
-                      }}
-                      aria-label="Clear search"
-                    >
-                      <span className="truncate">&quot;{urlQuery.trim()}&quot;</span>
-                      <span className="shrink-0 text-[var(--text-secondary)]" aria-hidden>
-                        ✕
-                      </span>
-                    </button>
-                  )}
-                  {sortSummaryLabel && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setLocationError(null);
-                        setSelectedSort('default');
-                      }}
-                      className="inline-flex min-h-[36px] items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors hover:opacity-90 active:opacity-80"
-                      style={{
-                        borderColor: 'var(--accent-primary)',
-                        backgroundColor: 'color-mix(in srgb, var(--accent-primary) 10%, transparent)',
-                        color: 'var(--text-primary)',
-                      }}
-                      aria-label="Clear sort"
-                    >
-                      <span className="whitespace-nowrap">Sort: {sortSummaryLabel}</span>
-                      <span className="shrink-0 text-[var(--text-secondary)]" aria-hidden>
-                        ✕
-                      </span>
-                    </button>
-                  )}
-                  {filterHighRating && (
-                    <button
-                      type="button"
-                      onClick={() => setFilterHighRating(false)}
-                      className="inline-flex min-h-[36px] items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors hover:opacity-90 active:opacity-80"
-                      style={{
-                        borderColor: 'var(--border)',
-                        backgroundColor: 'var(--background)',
-                        color: 'var(--text-primary)',
-                      }}
-                      aria-label="Remove 4.5+ rating filter"
-                    >
-                      <span>⭐ 4.5+</span>
-                      <span className="shrink-0 text-[var(--text-secondary)]" aria-hidden>
-                        ✕
-                      </span>
-                    </button>
-                  )}
-                </div>
+          <div className="mb-3 flex flex-col gap-2 border-b pb-3 sm:flex-row sm:items-center sm:justify-between sm:gap-3" style={{ borderColor: 'color-mix(in srgb, var(--border) 70%, transparent)' }}>
+            <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1.5">
+              <span className="shrink-0 text-[11px] leading-tight" style={{ color: 'var(--text-secondary)' }}>
+                Showing results for
+              </span>
+              <span className="hidden h-3 w-px shrink-0 bg-[color-mix(in_srgb,var(--border)_80%,transparent)] sm:inline" aria-hidden />
+              <div className={`flex min-w-0 flex-wrap items-center ${GAP_EL}`}>
+                {selectedCategories.map((cat) => (
+                  <button
+                    key={cat}
+                    type="button"
+                    onClick={() => removeCategory(cat)}
+                    className="inline-flex max-w-full items-center gap-1 rounded-md border px-2 py-0.5 text-xs font-medium transition-opacity hover:opacity-85 active:opacity-75"
+                    style={{
+                      borderColor: 'color-mix(in srgb, var(--border) 85%, transparent)',
+                      backgroundColor: 'var(--background)',
+                      color: 'var(--text-primary)',
+                    }}
+                    aria-label={`Remove category ${cat}`}
+                  >
+                    <span className="truncate">{cat}</span>
+                    <span className="shrink-0 opacity-60" style={{ color: 'var(--text-secondary)' }} aria-hidden>
+                      ×
+                    </span>
+                  </button>
+                ))}
+                {selectedDistricts.map((d) => (
+                  <button
+                    key={`d-${d}`}
+                    type="button"
+                    onClick={() => removeDistrict(d)}
+                    className="inline-flex max-w-full items-center gap-1 rounded-md border px-2 py-0.5 text-xs font-medium transition-opacity hover:opacity-85 active:opacity-75"
+                    style={{
+                      borderColor: 'color-mix(in srgb, var(--border) 85%, transparent)',
+                      backgroundColor: 'var(--background)',
+                      color: 'var(--text-primary)',
+                    }}
+                    aria-label={`Remove district ${d}`}
+                  >
+                    <span className="truncate">{d}</span>
+                    <span className="shrink-0 opacity-60" style={{ color: 'var(--text-secondary)' }} aria-hidden>
+                      ×
+                    </span>
+                  </button>
+                ))}
+                {urlQuery.trim().length > 0 && (
+                  <button
+                    type="button"
+                    onClick={clearSearchQuery}
+                    className="inline-flex max-w-full items-center gap-1 rounded-md border px-2 py-0.5 text-xs font-medium transition-opacity hover:opacity-85 active:opacity-75"
+                    style={{
+                      borderColor: 'color-mix(in srgb, var(--border) 85%, transparent)',
+                      backgroundColor: 'var(--background)',
+                      color: 'var(--text-primary)',
+                    }}
+                    aria-label="Clear search"
+                  >
+                    <span className="truncate">&quot;{urlQuery.trim()}&quot;</span>
+                    <span className="shrink-0 opacity-60" style={{ color: 'var(--text-secondary)' }} aria-hidden>
+                      ×
+                    </span>
+                  </button>
+                )}
+                {sortSummaryLabel && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setLocationError(null);
+                      setSelectedSort('default');
+                    }}
+                    className="inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs font-medium transition-opacity hover:opacity-85 active:opacity-75"
+                    style={{
+                      borderColor: 'color-mix(in srgb, var(--border) 85%, transparent)',
+                      backgroundColor: 'var(--background)',
+                      color: 'var(--text-primary)',
+                    }}
+                    aria-label="Clear sort"
+                  >
+                    <span className="whitespace-nowrap">Sort: {sortSummaryLabel}</span>
+                    <span className="shrink-0 opacity-60" style={{ color: 'var(--text-secondary)' }} aria-hidden>
+                      ×
+                    </span>
+                  </button>
+                )}
+                {filterHighRating && (
+                  <button
+                    type="button"
+                    onClick={() => setFilterHighRating(false)}
+                    className="inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-xs font-medium transition-opacity hover:opacity-85 active:opacity-75"
+                    style={{
+                      borderColor: 'color-mix(in srgb, var(--border) 85%, transparent)',
+                      backgroundColor: 'var(--background)',
+                      color: 'var(--text-primary)',
+                    }}
+                    aria-label="Remove 4.5+ rating filter"
+                  >
+                    <span>⭐ 4.5+</span>
+                    <span className="shrink-0 opacity-60" style={{ color: 'var(--text-secondary)' }} aria-hidden>
+                      ×
+                    </span>
+                  </button>
+                )}
               </div>
-              <button
-                type="button"
-                onClick={clearAllFeedFilters}
-                className="shrink-0 text-sm font-semibold underline-offset-2 transition-opacity hover:opacity-80 sm:pt-5"
-                style={{ color: 'var(--accent-primary)' }}
-              >
-                Clear all
-              </button>
             </div>
+            <button
+              type="button"
+              onClick={clearAllFeedFilters}
+              className="shrink-0 self-start text-[11px] font-medium underline-offset-2 transition-opacity hover:opacity-75 sm:self-center"
+              style={{ color: 'var(--accent-primary)' }}
+            >
+              Clear all
+            </button>
           </div>
         )}
 

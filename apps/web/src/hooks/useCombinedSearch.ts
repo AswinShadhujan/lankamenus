@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef } from 'react';
 import api from '@/lib/api';
-import type { CombinedSearchResponse } from '@/types/search';
+import type { CombinedSearchResponse, SearchScope } from '@/types/search';
 
 /** Short debounce: feels responsive while still batching rapid keystrokes. */
 const DEBOUNCE_MS = 120;
@@ -14,7 +14,7 @@ function isAbortError(err: unknown): boolean {
   return false;
 }
 
-export function useCombinedSearch(searchQuery: string) {
+export function useCombinedSearch(searchQuery: string, scope: SearchScope) {
   const [data, setData] = useState<CombinedSearchResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [debouncing, setDebouncing] = useState(false);
@@ -44,7 +44,7 @@ export function useCombinedSearch(searchQuery: string) {
 
       api
         .get<CombinedSearchResponse>('/search', {
-          params: { q: t },
+          params: { q: t, scope },
           signal: ctrl.signal,
         })
         .then((res) => {
@@ -65,7 +65,7 @@ export function useCombinedSearch(searchQuery: string) {
     return () => {
       window.clearTimeout(timer);
     };
-  }, [searchQuery]);
+  }, [searchQuery, scope]);
 
   useEffect(() => {
     return () => abortRef.current?.abort();

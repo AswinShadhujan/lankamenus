@@ -31,7 +31,7 @@ export function RestaurantCard({
 
   return (
     <article
-      className={`overflow-hidden rounded-xl border shadow-sm transition-all duration-200 active:scale-[0.99] md:hover:shadow-md md:hover:scale-[1.01] ${isRail ? 'max-w-[280px]' : 'flex h-full min-h-0 w-full flex-col'} ${className}`}
+      className={`overflow-hidden rounded-xl border transition-colors duration-200 active:scale-[0.99] md:hover:border-[color-mix(in_srgb,var(--border)_70%,var(--text-secondary))] md:hover:scale-[1.01] ${isRail ? 'max-w-[280px]' : 'flex h-full min-h-0 w-full flex-col'} ${className}`}
       style={{
         backgroundColor: 'var(--surface)',
         borderColor: 'var(--border)',

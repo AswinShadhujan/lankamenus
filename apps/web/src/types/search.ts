@@ -1,3 +1,5 @@
+export type SearchScope = 'dishes' | 'restaurants';
+
 /** GET /search combined response */
 export interface CombinedSearchRestaurant {
   id: number;

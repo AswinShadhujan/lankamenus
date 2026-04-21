@@ -1,8 +1,9 @@
 'use client';
 
 import { useCallback } from 'react';
+import type { SearchScope } from '@/types/search';
 
-export type SearchScope = 'all' | 'dishes' | 'restaurants';
+export type { SearchScope };
 
 type SearchBarProps = {
   value: string;
@@ -20,7 +21,6 @@ type SearchBarProps = {
 };
 
 const SCOPE_LABELS: Record<SearchScope, string> = {
-  all: 'All',
   dishes: 'Dishes',
   restaurants: 'Restaurants',
 };
@@ -35,7 +35,7 @@ export function SearchBar({
   className = '',
   'aria-label': ariaLabel = 'Search',
   variant = 'default',
-  scope = 'all',
+  scope = 'restaurants',
   onScopeChange,
 }: SearchBarProps) {
   const handleKeyDown = useCallback(
@@ -51,7 +51,7 @@ export function SearchBar({
   if (variant === 'premium') {
     return (
       <div
-        className={`flex min-h-[56px] w-full items-center gap-3 rounded-full border px-5 py-3.5 shadow-lg transition-shadow focus-within:shadow-xl focus-within:ring-2 focus-within:ring-orange-500 focus-within:ring-offset-2 focus-within:ring-offset-[var(--background)] ${className}`}
+        className={`flex min-h-[56px] w-full items-center gap-3 rounded-full border px-5 py-3.5 shadow-sm transition-shadow focus-within:shadow-md focus-within:ring-2 focus-within:ring-[color-mix(in_srgb,var(--accent-primary)_65%,transparent)] focus-within:ring-offset-1 focus-within:ring-offset-[var(--background)] ${className}`}
         style={{
           borderColor: 'var(--border)',
           backgroundColor: 'var(--surface)',
@@ -75,21 +75,34 @@ export function SearchBar({
           style={{ color: 'var(--text-primary)' }}
         />
         {onScopeChange && (
-          <div className="flex shrink-0 items-center gap-0.5 rounded-full border p-0.5" style={{ borderColor: 'var(--border)', backgroundColor: 'var(--background)' }}>
-            {(['all', 'dishes', 'restaurants'] as const).map((s) => (
-              <button
-                key={s}
-                type="button"
-                onMouseDown={(e) => e.preventDefault()}
-                onClick={() => onScopeChange(s)}
-                className="rounded-full px-2 py-0.5 text-[11px] font-medium transition-colors"
-                style={{
-                  backgroundColor: scope === s ? 'var(--accent-primary)' : 'transparent',
-                  color: scope === s ? '#fff' : 'var(--text-secondary)',
-                }}
-              >
-                {SCOPE_LABELS[s]}
-              </button>
+          <div
+            className="flex shrink-0 items-center gap-0.5 pl-1"
+            role="group"
+            aria-label="Search in"
+          >
+            {(['dishes', 'restaurants'] as const).map((s, i) => (
+              <span key={s} className="flex items-center gap-0.5">
+                {i > 0 && (
+                  <span className="select-none text-[10px] opacity-40" style={{ color: 'var(--text-secondary)' }} aria-hidden>
+                    ·
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => onScopeChange(s)}
+                  className="rounded px-1 py-0.5 text-[11px] font-medium transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-primary)] focus-visible:ring-offset-1"
+                  style={{
+                    color: scope === s ? 'var(--accent-primary)' : 'var(--text-secondary)',
+                    opacity: scope === s ? 1 : 0.75,
+                    textDecoration: scope === s ? 'underline' : 'none',
+                    textUnderlineOffset: '3px',
+                    fontWeight: scope === s ? 600 : 500,
+                  }}
+                >
+                  {SCOPE_LABELS[s]}
+                </button>
+              </span>
             ))}
           </div>
         )}

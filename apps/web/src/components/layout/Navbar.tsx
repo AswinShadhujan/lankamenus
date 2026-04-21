@@ -5,7 +5,8 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { useTheme } from '@/components/ThemeProvider';
-import { SearchBar, type SearchScope } from '@/components/ui/SearchBar';
+import { SearchBar } from '@/components/ui/SearchBar';
+import type { SearchScope } from '@/types/search';
 import { SearchDropdown } from '@/components/SearchDropdown';
 import { useCombinedSearch } from '@/hooks/useCombinedSearch';
 
@@ -32,7 +33,7 @@ export function Navbar({
   /** On `/`, URL `q` is debounced in MainLayout — keep a local draft so suggestions track keystrokes immediately. */
   const [homeDraft, setHomeDraft] = useState(searchValue);
   const [suggestOpen, setSuggestOpen] = useState(false);
-  const [searchScope, setSearchScope] = useState<SearchScope>('all');
+  const [searchScope, setSearchScope] = useState<SearchScope>('restaurants');
   const blurCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const searchShellRef = useRef<HTMLDivElement>(null);
 
@@ -74,7 +75,7 @@ export function Navbar({
     loading: combinedLoading,
     debouncing: combinedDebouncing,
     error: combinedError,
-  } = useCombinedSearch(searchDisplayValue);
+  } = useCombinedSearch(searchDisplayValue, searchScope);
 
   const showSuggestPanel = suggestOpen && searchDisplayValue.trim().length >= 1;
 
@@ -175,11 +176,7 @@ export function Navbar({
               placeholder={
                 searchScope === 'dishes'
                   ? 'Search dishes…'
-                  : searchScope === 'restaurants'
-                    ? 'Search restaurants…'
-                    : isHome
-                      ? 'Search dishes or restaurants'
-                      : 'Search dishes or restaurant name'
+                  : 'Search restaurants…'
               }
               className="w-full"
               variant={isHome ? 'premium' : 'default'}
