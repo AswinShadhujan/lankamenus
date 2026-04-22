@@ -93,7 +93,7 @@ export default function DishDetailPage() {
   if (loading) {
     return (
       <div className="min-h-screen pb-8 transition-colors duration-200" style={{ backgroundColor: 'var(--background)' }}>
-        <main className="mx-auto max-w-3xl space-y-6 px-4 py-6">
+        <main className="mx-auto max-w-3xl space-y-6 py-6 pl-[max(1rem,env(safe-area-inset-left,0px))] pr-[max(1rem,env(safe-area-inset-right,0px))] pb-[max(1.5rem,env(safe-area-inset-bottom,0px))] sm:pl-6 sm:pr-6">
           <Skeleton className="h-4 w-48" />
           <Skeleton className="h-[320px] w-full rounded-2xl" />
           <Skeleton className="h-8 w-3/4" />
@@ -106,7 +106,7 @@ export default function DishDetailPage() {
   if (error || !dish) {
     return (
       <div className="min-h-screen pb-8 transition-colors duration-200" style={{ backgroundColor: 'var(--background)' }}>
-        <main className="mx-auto max-w-3xl space-y-6 px-4 py-6">
+        <main className="mx-auto max-w-3xl space-y-6 py-6 pl-[max(1rem,env(safe-area-inset-left,0px))] pr-[max(1rem,env(safe-area-inset-right,0px))] pb-[max(1.5rem,env(safe-area-inset-bottom,0px))] sm:pl-6 sm:pr-6">
           <ErrorState message={error ?? 'Dish not found'} />
           <div className="flex flex-wrap gap-4">
             {id ? (
@@ -143,21 +143,35 @@ export default function DishDetailPage() {
       className="relative min-h-screen pb-8 transition-colors duration-200"
       style={{ backgroundColor: 'var(--background)', color: 'var(--text-primary)' }}
     >
-      <main className="mx-auto max-w-3xl space-y-6 px-4 py-6">
-        <nav className="flex flex-wrap items-center gap-1 text-xs sm:text-sm" style={{ color: 'var(--text-secondary)' }}>
-          <Link href="/" className="shrink-0 transition-opacity hover:opacity-80" style={{ color: 'var(--accent-primary)' }}>
+      <main className="mx-auto max-w-3xl space-y-6 py-6 pl-[max(1rem,env(safe-area-inset-left,0px))] pr-[max(1rem,env(safe-area-inset-right,0px))] pb-[max(1.5rem,env(safe-area-inset-bottom,0px))] sm:pl-6 sm:pr-6">
+        <nav
+          className="flex flex-wrap items-center gap-x-1 gap-y-1 text-xs leading-snug sm:text-sm"
+          style={{ color: 'var(--text-secondary)' }}
+        >
+          <Link
+            href="/"
+            className="inline-flex min-h-[40px] min-w-[40px] shrink-0 items-center transition-opacity hover:opacity-80"
+            style={{ color: 'var(--accent-primary)' }}
+          >
             Restaurants
           </Link>
-          <span className="mx-1 sm:mx-2">/</span>
+          <span className="mx-0.5 shrink-0 sm:mx-2" aria-hidden>
+            /
+          </span>
           <Link
             href={`/restaurants/${dish.restaurant_id}`}
-            className="min-w-0 truncate transition-opacity hover:opacity-80"
+            className="min-w-0 max-w-[min(100%,14rem)] truncate text-left transition-opacity hover:opacity-80 sm:max-w-[20rem]"
             style={{ color: 'var(--accent-primary)' }}
+            title={dish.restaurant_name}
           >
             {dish.restaurant_name}
           </Link>
-          <span className="mx-1 sm:mx-2">/</span>
-          <span className="min-w-0 truncate" style={{ color: 'var(--text-primary)' }}>{dish.name}</span>
+          <span className="mx-0.5 shrink-0 sm:mx-2" aria-hidden>
+            /
+          </span>
+          <span className="min-w-0 flex-1 break-words sm:flex-none sm:max-w-md" style={{ color: 'var(--text-primary)' }}>
+            {dish.name}
+          </span>
         </nav>
 
         <div className="relative overflow-hidden rounded-2xl">
@@ -279,10 +293,10 @@ export default function DishDetailPage() {
         <button
           type="button"
           onClick={goFullMenu}
-          className="mt-6 w-full rounded-xl py-3 font-medium text-white transition-opacity hover:opacity-95 active:opacity-90"
+          className="mt-6 flex min-h-[48px] w-full items-center justify-center rounded-xl px-4 py-3 text-center text-sm font-medium text-white transition-opacity hover:opacity-95 active:opacity-90"
           style={{ backgroundColor: 'var(--accent-primary)' }}
         >
-          View Full Menu of {dish.restaurant_name}
+          <span className="line-clamp-2">View full menu · {dish.restaurant_name}</span>
         </button>
 
         <div className="space-y-3">

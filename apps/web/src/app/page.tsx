@@ -165,6 +165,23 @@ export default function HomePage() {
   );
 
   /**
+   * Dish discovery rails: same geo/district as restaurants, plus venue-tag filter when selected
+   * so popular/trending dishes align with honest “at tagged restaurants” intent.
+   */
+  const homeDishDiscoveryQuery = useMemo((): Record<string, string | number> => {
+    const q: Record<string, string | number> = { ...homeSharedQuery };
+    if (selectedCategories.length > 0) {
+      q.cuisine = selectedCategories.join(',');
+    }
+    return q;
+  }, [homeSharedQuery, selectedCategories]);
+
+  const dishRailContextSubtitle =
+    selectedCategories.length > 0
+      ? `Menu items from venues tagged: ${selectedCategories.join(', ')}`
+      : null;
+
+  /**
    * Category dish rail: strict 5 km when coords are trusted; otherwise district / island-wide + cuisine only.
    */
   const categoryNearbyDishesQuery = useMemo((): Record<string, string | number> => {
@@ -466,7 +483,6 @@ export default function HomePage() {
       ? selectedCategories.filter((c) => c !== category)
       : [...selectedCategories, category];
     setCategoriesInUrl(next);
-    setCategoryPopupOpen(next.length > 0);
     scheduleScrollToAllRestaurants();
   };
 
@@ -628,6 +644,7 @@ export default function HomePage() {
   };
 
   const clearAllFeedFilters = () => {
+    setCategoryPopupOpen(false);
     setSelectedSort('default');
     setSelectedDistricts([]);
     setDistrictFilterEnabled(false);
@@ -649,7 +666,7 @@ export default function HomePage() {
   }, [categoryPopupOpen]);
 
   return (
-    <main className="mx-auto max-w-screen-xl px-4 py-4 sm:px-6 sm:py-6">
+    <main className="mx-auto max-w-screen-xl px-4 py-4 pb-[max(1rem,env(safe-area-inset-bottom,0px))] sm:px-6 sm:py-6 sm:pb-6">
       <section className="mb-4 flex items-center gap-3">
         <button
           type="button"
@@ -740,9 +757,27 @@ export default function HomePage() {
                 Restaurant cuisine
               </p>
               <p className="mb-1.5 text-[11px] leading-snug opacity-90" style={{ color: 'var(--text-secondary)' }}>
-                Tags describe venues (not a full dish taxonomy).
+                Tags describe venues. Dish rails use the same tags to narrow which restaurants&apos; menus appear — not
+                standalone dish categories.
               </p>
               <HomeCategoryStrip selected={selectedCategories} onToggle={toggleCategory} />
+              {selectedCategories.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setCategoryPopupOpen(true)}
+                  className="mt-2 w-full rounded-lg border px-3 py-2.5 text-left text-sm font-medium transition-opacity hover:opacity-90 active:opacity-85 sm:w-auto sm:min-w-[min(100%,280px)]"
+                  style={{
+                    borderColor: 'color-mix(in srgb, var(--border) 80%, transparent)',
+                    backgroundColor: 'var(--background)',
+                    color: 'var(--text-primary)',
+                  }}
+                >
+                  <span className="block text-[11px] font-normal opacity-80" style={{ color: 'var(--text-secondary)' }}>
+                    Dish + venue overview
+                  </span>
+                  <span className="mt-0.5 block">See matching dishes &amp; sample restaurants</span>
+                </button>
+              )}
             </div>
 
             <div
@@ -813,47 +848,54 @@ export default function HomePage() {
       )}
 
       {categoryPopupOpen && selectedCategories.length > 0 && (
-        <div className="fixed inset-0 z-[70]">
+        <div className="fixed inset-0 z-[70] flex flex-col justify-end sm:justify-center sm:p-4">
           <button
             type="button"
-            aria-label="Close cuisine results"
+            aria-label="Close overview"
             onClick={() => setCategoryPopupOpen(false)}
-            className="absolute inset-0 bg-black/45"
+            className="absolute inset-0 bg-black/40 backdrop-blur-[2px] transition-opacity"
           />
           <div
             role="dialog"
             aria-modal="true"
-            aria-label="Restaurant cuisine results"
-            className="absolute inset-x-0 bottom-0 top-8 overflow-y-auto rounded-t-3xl border p-4 sm:inset-8 sm:rounded-2xl sm:p-6"
+            aria-label="Dish and venue overview"
+            className="relative z-[1] mx-auto flex max-h-[min(92dvh,calc(100dvh-1.5rem))] w-full max-w-screen-xl flex-col rounded-t-2xl border border-b-0 shadow-lg sm:max-h-[min(88vh,840px)] sm:rounded-2xl sm:border-b"
             style={{
               borderColor: 'var(--border)',
               backgroundColor: 'var(--background)',
+              paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom, 0px))',
             }}
           >
-            <div className="mx-auto max-w-screen-xl">
-              <div className="mb-4 flex items-start justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: 'var(--text-secondary)' }}>
-                    Cuisine filters
+            <div className="flex shrink-0 flex-col border-b px-4 pb-3 pt-2 sm:px-5 sm:pt-3" style={{ borderColor: 'color-mix(in srgb, var(--border) 70%, transparent)' }}>
+              <div className="mx-auto mb-3 h-1 w-11 shrink-0 rounded-full sm:hidden" style={{ backgroundColor: 'var(--border)' }} aria-hidden />
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <p className="text-[11px] font-medium" style={{ color: 'var(--text-secondary)' }}>
+                    Overview · venue tags
                   </p>
-                  <h2 className="text-lg font-semibold sm:text-xl" style={{ color: 'var(--text-primary)' }}>
-                    Nearby dishes and matching restaurants
+                  <h2 className="mt-0.5 text-base font-semibold leading-snug sm:text-lg" style={{ color: 'var(--text-primary)' }}>
+                    Dishes near you, then sample restaurants
                   </h2>
-                  <p className="mt-1 text-sm" style={{ color: 'var(--text-secondary)' }}>
-                    {selectedCategories.join(', ')}
+                  <p className="mt-1 text-sm leading-snug" style={{ color: 'var(--text-secondary)' }}>
+                    Tags: {selectedCategories.join(', ')} — dishes are menu items; tags describe where they&apos;re
+                    served.
                   </p>
                 </div>
                 <button
                   type="button"
                   onClick={() => setCategoryPopupOpen(false)}
-                  className="inline-flex min-h-[40px] items-center rounded-full border px-3 py-1.5 text-sm font-medium transition-opacity hover:opacity-80"
+                  className="inline-flex min-h-[44px] min-w-[44px] shrink-0 items-center justify-center rounded-full border text-sm font-medium transition-opacity hover:opacity-80"
                   style={{ borderColor: 'var(--border)', color: 'var(--text-primary)' }}
+                  aria-label="Close"
                 >
-                  Close
+                  ✕
                 </button>
               </div>
+            </div>
 
-              <section className="mb-6">
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-y-contain px-4 py-4 sm:px-5">
+              <div className="mx-auto max-w-screen-xl">
+              <section className="mb-8">
                 <NearbyDishesSection
                   locationReady={locationReady}
                   apiQuery={categoryNearbyDishesQuery}
@@ -864,8 +906,8 @@ export default function HomePage() {
 
               <section>
                 <HomeSectionHeader
-                  title="Matching restaurants"
-                  subtitle="Restaurants tagged with the selected cuisine filters"
+                  title="Sample restaurants"
+                  subtitle="Venues whose tags overlap your selection (full list below)"
                 />
                 {feedLoading ? (
                   <ul className={ALL_RESTAURANTS_GRID}>
@@ -908,28 +950,35 @@ export default function HomePage() {
                   </p>
                 )}
               </section>
+              </div>
             </div>
           </div>
         </div>
       )}
 
-      <section
-        className={`${SECTION_MB} space-y-6 transition-opacity duration-300 ease-out ${
-          softenDiscoveryRails ? 'opacity-[0.72]' : 'opacity-100'
-        }`}
-      >
+      <section className={`${SECTION_MB} space-y-6`}>
         <PopularDishesSection
           locationReady={locationReady}
-          apiQuery={homeSharedQuery}
+          apiQuery={homeDishDiscoveryQuery}
           locationLabel={railLocationLabel}
+          sectionSubtitle={dishRailContextSubtitle}
           onSeeAll={scrollToAllRestaurants}
         />
         <TrendingDishesSection
           locationReady={locationReady}
-          apiQuery={homeSharedQuery}
+          apiQuery={homeDishDiscoveryQuery}
           locationLabel={railLocationLabel}
+          sectionSubtitle={dishRailContextSubtitle}
           onSeeAll={scrollToAllRestaurants}
         />
+      </section>
+
+      <section
+        className={`${SECTION_MB} space-y-6 border-t pt-6 transition-opacity duration-300 ease-out ${
+          softenDiscoveryRails ? 'opacity-[0.72]' : 'opacity-100'
+        }`}
+        style={{ borderColor: 'color-mix(in srgb, var(--border) 55%, transparent)' }}
+      >
         <HorizontalRestaurantSection
           title="🔥 Popular"
           subtitle="Popular picks near you"
@@ -1081,14 +1130,29 @@ export default function HomePage() {
                 )}
               </div>
             </div>
-            <button
-              type="button"
-              onClick={clearAllFeedFilters}
-              className="shrink-0 self-start text-[11px] font-medium underline-offset-2 transition-opacity hover:opacity-75 sm:self-center"
-              style={{ color: 'var(--accent-primary)' }}
-            >
-              Clear all
-            </button>
+            <div className="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 self-start sm:self-center">
+              {selectedCategories.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setCategoryPopupOpen(true)}
+                  className="min-h-[44px] rounded-md border px-3 text-[11px] font-semibold transition-opacity hover:opacity-85 active:opacity-75"
+                  style={{
+                    borderColor: 'color-mix(in srgb, var(--border) 85%, transparent)',
+                    color: 'var(--accent-primary)',
+                  }}
+                >
+                  Dish overview
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={clearAllFeedFilters}
+                className="min-h-[44px] text-[11px] font-medium underline-offset-2 transition-opacity hover:opacity-75"
+                style={{ color: 'var(--accent-primary)' }}
+              >
+                Clear all
+              </button>
+            </div>
           </div>
         )}
 

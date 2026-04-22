@@ -11,10 +11,10 @@ export function HorizontalScroll({
 }: HorizontalScrollProps) {
   return (
     <div
-      className={`hide-scrollbar overflow-x-auto scroll-smooth pb-2 [-webkit-overflow-scrolling:touch] -mx-4 px-4 md:-mx-0 md:px-0 ${className}`}
+      className={`hide-scrollbar overflow-x-auto scroll-smooth pb-2 [-webkit-overflow-scrolling:touch] -mx-4 ps-[max(1rem,env(safe-area-inset-left,0px))] pe-[max(1rem,env(safe-area-inset-right,0px))] md:-mx-0 md:ps-0 md:pe-0 ${className}`}
       style={{ scrollbarWidth: 'none' }}
     >
-      <div className="flex snap-x snap-mandatory gap-4">{children}</div>
+      <div className="flex snap-x snap-mandatory gap-3 sm:gap-4">{children}</div>
     </div>
   );
 }

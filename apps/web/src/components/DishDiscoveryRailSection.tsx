@@ -56,7 +56,7 @@ function dishHref(d: DishDiscoveryItem): string {
 
 function PopularImageBadge() {
   return (
-    <div className="absolute right-2 top-2 rounded-full bg-orange-500/90 px-2 py-1 text-xs font-medium text-white shadow-md">
+    <div className="absolute right-2 top-2 rounded-full bg-orange-500/90 px-2 py-1 text-xs font-medium text-white shadow-sm">
       🔥 Popular
     </div>
   );
@@ -64,19 +64,21 @@ function PopularImageBadge() {
 
 function TrendingImageBadge() {
   return (
-    <div className="absolute right-2 top-2 animate-pulse rounded-full bg-blue-500/90 px-2 py-1 text-xs font-medium text-white shadow-md">
+    <div className="absolute right-2 top-2 rounded-full bg-blue-500/90 px-2 py-1 text-xs font-medium text-white shadow-sm">
       ⚡ Trending
     </div>
   );
 }
 
+const DISH_CARD_WIDTH = 'w-[min(260px,calc(100vw-2.75rem))] shrink-0 snap-start';
+
 function DishDiscoverySkeletonRow() {
   return (
     <HorizontalScroll>
       {Array.from({ length: 6 }).map((_, i) => (
-        <div key={i} className="w-[260px] shrink-0 snap-start">
+        <div key={i} className={DISH_CARD_WIDTH}>
           <div
-            className="overflow-hidden rounded-2xl border shadow-md"
+            className="overflow-hidden rounded-2xl border shadow-sm"
             style={{ borderColor: 'var(--border)', backgroundColor: 'var(--surface)' }}
           >
             <Skeleton className="h-[160px] w-full rounded-none" />
@@ -209,11 +211,11 @@ export function DishDiscoveryRailSection({
                 return (
                   <div
                     key={`${d.restaurant.id}-${d.menu_id}-${d.id}`}
-                    className="w-[260px] shrink-0 snap-start"
+                    className={DISH_CARD_WIDTH}
                   >
                     <Link
                       href={href}
-                      className="group relative block overflow-hidden rounded-2xl border shadow-md outline-none transition-all duration-300 hover:scale-[1.03] hover:shadow-xl focus-visible:ring-2 focus-visible:ring-orange-500 focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)]"
+                      className="group relative block overflow-hidden rounded-2xl border shadow-sm outline-none transition-transform duration-200 active:scale-[0.99] hover:scale-[1.02] focus-visible:ring-2 focus-visible:ring-[color-mix(in_srgb,var(--accent-primary)_55%,transparent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)]"
                       style={{ borderColor: 'var(--border)', backgroundColor: 'var(--surface)' }}
                     >
                       <div className="relative h-[160px] overflow-hidden">
@@ -270,13 +272,14 @@ export function PopularDishesSection(
   props: Omit<
     DishDiscoveryRailSectionProps,
     'title' | 'apiPath' | 'badgeMode' | 'sectionSubtitle'
-  >,
+  > & { sectionSubtitle?: string | null },
 ) {
+  const { sectionSubtitle, ...rest } = props;
   return (
     <DishDiscoveryRailSection
-      {...props}
+      {...rest}
       title="🔥 Popular Dishes"
-      sectionSubtitle="Standout picks from menus"
+      sectionSubtitle={sectionSubtitle ?? 'Standout picks from menus near you'}
       apiPath="/dishes/featured"
       badgeMode="popular"
     />
@@ -287,13 +290,14 @@ export function TrendingDishesSection(
   props: Omit<
     DishDiscoveryRailSectionProps,
     'title' | 'apiPath' | 'badgeMode' | 'sectionSubtitle'
-  >,
+  > & { sectionSubtitle?: string | null },
 ) {
+  const { sectionSubtitle, ...rest } = props;
   return (
     <DishDiscoveryRailSection
-      {...props}
+      {...rest}
       title="⚡ Trending Now"
-      sectionSubtitle="Getting noticed on menus"
+      sectionSubtitle={sectionSubtitle ?? 'Dishes gaining traction near you'}
       apiPath="/dishes/trending"
       badgeMode="trending"
     />
@@ -304,13 +308,17 @@ export function NearbyDishesSection(
   props: Omit<
     DishDiscoveryRailSectionProps,
     'title' | 'apiPath' | 'badgeMode' | 'sectionSubtitle'
-  >,
+  > & { sectionSubtitle?: string | null },
 ) {
+  const { sectionSubtitle, ...rest } = props;
   return (
     <DishDiscoveryRailSection
-      {...props}
+      {...rest}
       title="🍽 Dishes for you"
-      sectionSubtitle="Matching your selected categories"
+      sectionSubtitle={
+        sectionSubtitle ??
+        'Menu items from venues whose tags overlap your selection (not a dish taxonomy)'
+      }
       apiPath="/dishes/nearby"
       badgeMode="popular"
     />

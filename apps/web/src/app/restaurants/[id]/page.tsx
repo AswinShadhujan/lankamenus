@@ -117,7 +117,7 @@ export default function RestaurantDetailPage() {
 
   if (loading) {
     return (
-      <main className="mx-auto max-w-3xl px-4 py-6 sm:px-6 lg:max-w-5xl">
+      <main className="mx-auto max-w-3xl py-6 pl-[max(1rem,env(safe-area-inset-left,0px))] pr-[max(1rem,env(safe-area-inset-right,0px))] pb-[max(1.5rem,env(safe-area-inset-bottom,0px))] sm:pl-6 sm:pr-6 lg:max-w-5xl">
         <Skeleton className="mb-4 h-6 w-32" />
         <Skeleton className="aspect-[21/9] w-full rounded-xl" />
         <Skeleton className="mt-6 h-8 w-3/4" />
@@ -136,7 +136,7 @@ export default function RestaurantDetailPage() {
 
   if (error || !restaurant) {
     return (
-      <main className="mx-auto max-w-3xl px-4 py-6 sm:px-6 lg:max-w-5xl">
+      <main className="mx-auto max-w-3xl py-6 pl-[max(1rem,env(safe-area-inset-left,0px))] pr-[max(1rem,env(safe-area-inset-right,0px))] pb-[max(1.5rem,env(safe-area-inset-bottom,0px))] sm:pl-6 sm:pr-6 lg:max-w-5xl">
         <ErrorState message={error ?? 'Restaurant not found'} />
         <Link
           href="/"
@@ -159,16 +159,16 @@ export default function RestaurantDetailPage() {
   ];
 
   return (
-    <main className="mx-auto max-w-3xl px-4 py-6 sm:px-6 lg:max-w-5xl">
+    <main className="mx-auto max-w-3xl py-6 pl-[max(1rem,env(safe-area-inset-left,0px))] pr-[max(1rem,env(safe-area-inset-right,0px))] pb-[max(1.5rem,env(safe-area-inset-bottom,0px))] sm:pl-6 sm:pr-6 lg:max-w-5xl">
       <Link
         href="/"
-        className="mb-4 inline-block text-small font-medium transition-opacity hover:opacity-80"
+        className="mb-4 inline-flex min-h-[44px] items-center text-small font-medium transition-opacity hover:opacity-80"
         style={{ color: 'var(--text-secondary)' }}
       >
         ← Back to restaurants
       </Link>
 
-      <div className="relative mb-6 aspect-[16/9] w-full overflow-hidden rounded-xl bg-[var(--border)] sm:aspect-[21/9]">
+      <div className="relative mb-6 aspect-[16/9] w-full max-w-full overflow-hidden rounded-xl bg-[var(--border)] sm:aspect-[21/9]">
         <RestaurantPhotoImage
           restaurant={restaurant}
           alt=""
@@ -179,7 +179,10 @@ export default function RestaurantDetailPage() {
       <header className="mb-6">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
           <div className="min-w-0 flex-1">
-            <h1 className="text-xl font-bold sm:text-h1" style={{ color: 'var(--text-primary)' }}>
+            <h1
+              className="text-xl font-bold leading-tight sm:text-h1"
+              style={{ color: 'var(--text-primary)', wordBreak: 'break-word' }}
+            >
               {restaurant.name_default}
             </h1>
             <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -218,7 +221,7 @@ export default function RestaurantDetailPage() {
                 href={googleMapsUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-small font-medium transition-opacity hover:opacity-80 active:opacity-70"
+                className="inline-flex min-h-[44px] items-center gap-1.5 rounded-lg border px-3 py-2 text-small font-medium transition-opacity hover:opacity-80 active:opacity-70"
                 style={{
                   borderColor: 'var(--border)',
                   backgroundColor: 'var(--surface)',
@@ -317,7 +320,7 @@ export default function RestaurantDetailPage() {
             key={tab.id}
             type="button"
             onClick={() => setActiveTab(tab.id)}
-            className="border-b-2 px-4 py-2 text-small font-medium transition-colors"
+            className="min-h-[48px] min-w-[44px] flex-1 border-b-2 px-3 py-2.5 text-small font-medium transition-colors sm:flex-none sm:px-5"
             style={{
               borderColor: activeTab === tab.id ? 'var(--accent-primary)' : 'transparent',
               color: activeTab === tab.id ? 'var(--accent-primary)' : 'var(--text-secondary)',

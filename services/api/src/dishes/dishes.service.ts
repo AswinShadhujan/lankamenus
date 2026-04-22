@@ -394,6 +394,8 @@ export class DishesService {
       strictGeo != null ? this.buildLocationFilter(strictGeo) : Prisma.sql``;
     const districtNames = this.parseDistrictList(query);
     const districtFilter = this.buildDistrictFilter(districtNames);
+    const cuisineTags = this.parseCuisineList(query);
+    const cuisineFilter = this.buildCuisineFilter(cuisineTags);
     const geoLat = strictGeo?.lat ?? biasPoint?.lat;
     const geoLng = strictGeo?.lng ?? biasPoint?.lng;
     const useDishGeoBlend = geoLat != null && geoLng != null;
@@ -411,7 +413,7 @@ export class DishesService {
 
     if (this.isDevDebug()) {
       this.logger.log(
-        `[dish-district-debug] featured districtRaw=${query.district ?? '∅'} districtParsed=${JSON.stringify(districtNames)} strictGeo=${strictGeo != null} bias=${biasPoint != null} blendMode=${blendMode}`,
+        `[dish-district-debug] featured districtRaw=${query.district ?? '∅'} districtParsed=${JSON.stringify(districtNames)} cuisineRaw=${query.cuisine ?? '∅'} strictGeo=${strictGeo != null} bias=${biasPoint != null} blendMode=${blendMode}`,
       );
     }
 
@@ -443,6 +445,7 @@ export class DishesService {
         AND (mi.is_popular = true OR mi.is_recommended = true)
         ${geoFilter}
         ${districtFilter}
+        ${cuisineFilter}
       ORDER BY
         mi.is_popular DESC,
         mi.is_recommended DESC,
@@ -480,6 +483,7 @@ export class DishesService {
           AND mi.is_available = true
           ${geoFilter}
           ${districtFilter}
+          ${cuisineFilter}
         ORDER BY
           r.rating DESC NULLS LAST,
           r.popular_score DESC NULLS LAST
@@ -537,6 +541,8 @@ export class DishesService {
       strictGeo != null ? this.buildLocationFilter(strictGeo) : Prisma.sql``;
     const districtNames = this.parseDistrictList(query);
     const districtFilter = this.buildDistrictFilter(districtNames);
+    const cuisineTags = this.parseCuisineList(query);
+    const cuisineFilter = this.buildCuisineFilter(cuisineTags);
     const geoLat = strictGeo?.lat ?? biasPoint?.lat;
     const geoLng = strictGeo?.lng ?? biasPoint?.lng;
     const useDishGeoBlend = geoLat != null && geoLng != null;
@@ -554,7 +560,7 @@ export class DishesService {
 
     if (this.isDevDebug()) {
       this.logger.log(
-        `[dish-district-debug] trending districtRaw=${query.district ?? '∅'} districtParsed=${JSON.stringify(districtNames)} strictGeo=${strictGeo != null} bias=${biasPoint != null} blendMode=${blendMode}`,
+        `[dish-district-debug] trending districtRaw=${query.district ?? '∅'} districtParsed=${JSON.stringify(districtNames)} cuisineRaw=${query.cuisine ?? '∅'} strictGeo=${strictGeo != null} bias=${biasPoint != null} blendMode=${blendMode}`,
       );
     }
 
@@ -584,6 +590,7 @@ export class DishesService {
         AND mi.is_available = true
         ${geoFilter}
         ${districtFilter}
+        ${cuisineFilter}
       ORDER BY
         COALESCE(mi.click_count, 0) DESC,
         mi.updated_at DESC
@@ -619,6 +626,7 @@ export class DishesService {
           AND mi.is_available = true
           ${geoFilter}
           ${districtFilter}
+          ${cuisineFilter}
         ORDER BY
           r.rating DESC NULLS LAST,
           COALESCE(mi.click_count, 0) DESC
