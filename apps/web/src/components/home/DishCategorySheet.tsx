@@ -264,7 +264,7 @@ export function DishCategorySheet({
         role="dialog"
         aria-modal="true"
         aria-labelledby="dish-category-sheet-title"
-        className={`relative z-[1] flex w-full flex-col overflow-hidden rounded-t-3xl shadow-xl transition-[transform,opacity] duration-300 ease-out sm:max-h-[80vh] sm:max-w-[640px] sm:rounded-3xl ${
+        className={`relative z-[1] flex w-full flex-col overflow-hidden rounded-t-3xl shadow-xl transition-[transform,opacity] duration-300 ease-out sm:max-h-[85vh] sm:max-w-[680px] sm:rounded-3xl ${
           entered
             ? 'pointer-events-auto max-h-[85dvh] translate-y-0 opacity-100 sm:translate-y-0'
             : 'pointer-events-none max-h-[85dvh] translate-y-full opacity-100 sm:translate-y-6 sm:opacity-0'

@@ -670,17 +670,21 @@ export default function HomePage() {
   }, [categoryPopupOpen]);
 
   useEffect(() => {
-    if (!cuisineMenuOpen && !districtMenuOpen) return;
-    const onPointerDown = (e: PointerEvent) => {
-      const t = e.target as Node;
-      if (cuisineFilterWrapRef.current?.contains(t)) return;
-      if (districtFilterWrapRef.current?.contains(t)) return;
-      setCuisineMenuOpen(false);
-      setDistrictMenuOpen(false);
-    };
-    document.addEventListener('pointerdown', onPointerDown);
-    return () => document.removeEventListener('pointerdown', onPointerDown);
-  }, [cuisineMenuOpen, districtMenuOpen]);
+    function handleClickOutside(e: MouseEvent) {
+      if (
+        cuisineFilterWrapRef.current &&
+        !cuisineFilterWrapRef.current.contains(e.target as Node)
+      )
+        setCuisineMenuOpen(false);
+      if (
+        districtFilterWrapRef.current &&
+        !districtFilterWrapRef.current.contains(e.target as Node)
+      )
+        setDistrictMenuOpen(false);
+    }
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   const cuisinePillActive = selectedCategories.length > 0;
   const cuisinePillLabel =
@@ -839,7 +843,11 @@ export default function HomePage() {
         <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide" style={{ color: 'var(--text-secondary)' }}>
           Restaurants
         </p>
-        <div className="hide-scrollbar flex flex-nowrap items-center gap-2 overflow-x-auto pb-1 [-webkit-overflow-scrolling:touch]">
+        <div
+          className={`hide-scrollbar flex flex-nowrap items-center gap-2 pb-1 [-webkit-overflow-scrolling:touch] ${
+            cuisineMenuOpen || districtMenuOpen ? 'overflow-visible' : 'overflow-x-auto'
+          }`}
+        >
           <UberEatsPill label="Near me" selected={selectedSort === 'distance'} onClick={onSortNearby} disabled={userLocation.status === 'unknown'} />
           <UberEatsPill label="Popular" selected={selectedSort === 'popular'} onClick={onSortPopular} />
           <UberEatsPill label="Top Rated" selected={selectedSort === 'top_rated'} onClick={onSortTopRated} />
