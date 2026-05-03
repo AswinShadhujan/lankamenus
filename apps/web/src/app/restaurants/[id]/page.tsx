@@ -3,7 +3,6 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import Image from 'next/image';
 import api, { getAdminToken } from '@/lib/api';
 import { Restaurant } from '@/types/restaurant';
 import { MenuListItem } from '@/types/menu';
@@ -256,22 +255,37 @@ export default function RestaurantDetailPage() {
                 href={googleMapsUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="inline-flex min-h-[44px] items-center gap-1.5 rounded-lg border px-3 py-2 text-small font-medium transition-opacity hover:opacity-80 active:opacity-70"
-                style={{
-                  borderColor: 'var(--border)',
-                  backgroundColor: 'var(--surface)',
-                  color: 'var(--text-secondary)',
-                }}
                 title="Open in Google Maps"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  padding: '6px 12px',
+                  borderRadius: '9999px',
+                  border: '1px solid var(--border)',
+                  background: 'var(--surface)',
+                  color: 'var(--text-secondary)',
+                  fontSize: '0.8rem',
+                  fontWeight: 500,
+                  textDecoration: 'none',
+                  transition: 'border-color 0.15s ease',
+                }}
               >
-                <Image
-                  src="/google-maps-pin.svg"
-                  alt=""
-                  width={24}
-                  height={24}
-                  className="h-6 w-6 shrink-0 object-contain"
-                />
-                <span className="hidden sm:inline">Google Maps</span>
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden
+                >
+                  <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
+                  <circle cx="12" cy="10" r="3" />
+                </svg>
+                Directions
               </a>
             </div>
         </div>
