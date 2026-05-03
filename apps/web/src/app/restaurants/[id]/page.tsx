@@ -1,14 +1,13 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { useParams } from 'next/navigation';
+import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import Image from 'next/image';
 import api, { getAdminToken } from '@/lib/api';
 import { Restaurant } from '@/types/restaurant';
 import { MenuListItem } from '@/types/menu';
 import { RatingBadge } from '@/components/ui/RatingBadge';
-import { FavoriteButton } from '@/components/ui/FavoriteButton';
 import { SectionHeader } from '@/components/ui/SectionHeader';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { ErrorState } from '@/components/ui/ErrorState';
@@ -24,6 +23,7 @@ type TabId = 'menu' | 'reviews';
 
 export default function RestaurantDetailPage() {
   const params = useParams();
+  const router = useRouter();
   const id = params?.id as string;
 
   const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
@@ -50,22 +50,21 @@ export default function RestaurantDetailPage() {
       .catch(() => {});
   }, [hasToken, id]);
 
-  const handleToggleFavourite = () => {
+  const handleFavouriteClick = () => {
     if (!restaurant || favouriteLoading) return;
+    if (!hasToken) {
+      router.push('/login');
+      return;
+    }
     const restaurantId = restaurant.id;
+    const prev = isFavourite;
+    setIsFavourite(!prev);
     setFavouriteLoading(true);
-    if (isFavourite) {
-      api
-        .delete(`/users/me/favourites/${restaurantId}`)
-        .then(() => setIsFavourite(false))
-        .catch(() => {})
-        .finally(() => setFavouriteLoading(false));
+    const fail = () => setIsFavourite(prev);
+    if (prev) {
+      api.delete(`/users/me/favourites/${restaurantId}`).catch(fail).finally(() => setFavouriteLoading(false));
     } else {
-      api
-        .post('/users/me/favourites', { restaurantId })
-        .then(() => setIsFavourite(true))
-        .catch(() => {})
-        .finally(() => setFavouriteLoading(false));
+      api.post('/users/me/favourites', { restaurantId }).catch(fail).finally(() => setFavouriteLoading(false));
     }
   };
 
@@ -174,11 +173,47 @@ export default function RestaurantDetailPage() {
           alt=""
           className="h-full w-full object-cover"
         />
+        <div className="pointer-events-none absolute inset-x-0 top-0 z-[1] h-28 bg-gradient-to-b from-black/50 to-transparent" aria-hidden />
+
+        <div className="absolute right-3 top-3 z-[2] flex flex-col items-center gap-0.5 sm:right-4 sm:top-4">
+          <button
+            type="button"
+            onClick={(e) => {
+              e.preventDefault();
+              handleFavouriteClick();
+            }}
+            disabled={Boolean(hasToken && favouriteLoading)}
+            aria-label={
+              hasToken ? (isFavourite ? 'Remove from favourites' : 'Add to favourites') : 'Log in to save restaurant'
+            }
+            className="inline-flex min-h-11 min-w-11 shrink-0 items-center justify-center rounded-full border-0 text-lg leading-none shadow-sm transition-[transform] active:scale-95 disabled:opacity-55"
+            style={{
+              color: '#ffffff',
+              backgroundColor:
+                hasToken && isFavourite ? 'var(--accent-primary)' : 'rgba(0,0,0,0.35)',
+            }}
+          >
+            {hasToken && favouriteLoading ? (
+              <span className="text-base leading-none" aria-hidden>
+                ⋯
+              </span>
+            ) : (
+              <span aria-hidden>{hasToken && isFavourite ? '♥' : '♡'}</span>
+            )}
+          </button>
+          {!hasToken ? (
+            <span
+              className="text-[0.75rem] font-medium drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]"
+              style={{ color: 'var(--text-secondary)' }}
+            >
+              Save
+            </span>
+          ) : null}
+        </div>
       </div>
 
       <header className="mb-6">
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
-          <div className="min-w-0 flex-1">
+        <div className="min-w-0">
             <h1
               className="text-xl font-bold leading-tight sm:text-h1"
               style={{ color: 'var(--text-primary)', wordBreak: 'break-word' }}
@@ -238,48 +273,7 @@ export default function RestaurantDetailPage() {
                 />
                 <span className="hidden sm:inline">Google Maps</span>
               </a>
-              <div className="sm:hidden">
-                {hasToken ? (
-                  <FavoriteButton
-                    isFavorite={isFavourite}
-                    loading={favouriteLoading}
-                    onClick={handleToggleFavourite}
-                  />
-                ) : (
-                  <Link
-                    href="/login"
-                    className="inline-block rounded-lg border px-3 py-1.5 text-xs font-medium transition-colors"
-                    style={{
-                      borderColor: 'var(--border)',
-                      color: 'var(--text-secondary)',
-                    }}
-                  >
-                    Log in to save
-                  </Link>
-                )}
-              </div>
             </div>
-          </div>
-          <div className="hidden shrink-0 sm:block">
-            {hasToken ? (
-              <FavoriteButton
-                isFavorite={isFavourite}
-                loading={favouriteLoading}
-                onClick={handleToggleFavourite}
-              />
-            ) : (
-              <Link
-                href="/login"
-                className="inline-block rounded-lg border px-4 py-2 text-small font-medium transition-colors"
-                style={{
-                  borderColor: 'var(--border)',
-                  color: 'var(--text-secondary)',
-                }}
-              >
-                Log in to save favourites
-              </Link>
-            )}
-          </div>
         </div>
       </header>
 

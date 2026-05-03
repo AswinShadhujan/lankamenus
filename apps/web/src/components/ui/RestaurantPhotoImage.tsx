@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { getApiBaseUrl } from '@/lib/api';
+import { isValidRestaurantImage } from '@/lib/restaurant-photo';
 
 type RestaurantPhotoImageProps = {
   restaurant: {
@@ -57,7 +58,8 @@ export function RestaurantPhotoImage({
   alt = '',
 }: RestaurantPhotoImageProps) {
   const apiBase = getApiBaseUrl();
-  const directUrl = restaurant.media_asset?.secure_url?.trim() ?? '';
+  const rawDirect = restaurant.media_asset?.secure_url?.trim() ?? '';
+  const directUrl = isValidRestaurantImage(rawDirect) ? rawDirect : '';
   const hasGoogle = Boolean(restaurant.photo_reference?.trim());
   const canUseProxy = hasGoogle && apiBase.length > 0;
   const proxyUrl = canUseProxy

@@ -34,12 +34,17 @@ import {
 import { CreateRestaurantDto } from './dto/create-restaurant.dto';
 import { UpdateRestaurantDto } from './dto/update-restaurant.dto';
 import { MediaService } from '../media/media.service';
+import { resolveDishCategoryKeywords } from '../lib/dishKeywords';
+import { compareRestaurantNameRank } from '../lib/nameMatchRank';
 
 const SELECT_RESTAURANT = RESTAURANT_LIST_SELECT;
 
 /** Default page size; max enforced for scalability (offset pagination). */
 const DEFAULT_PAGE_SIZE = 20;
 const MAX_PAGE_SIZE = 50;
+
+/** Prisma fallback text search (`q`): reorder by name match tier (exact → prefix → word → substring). */
+const RESTAURANT_NAME_RANK_FETCH_CAP = 2000;
 
 /** Great-circle distance for bias ordering (lat/lng without radius filter). */
 function haversineKm(lat1: number, lon1: number, lat2: number, lon2: number): number {
@@ -370,6 +375,25 @@ export class RestaurantsService implements OnModuleInit {
     return result;
   }
 
+  /** AND-composes `clause` into `where` (handles non-empty prior keys). */
+  private mergeRestaurantWhereClause(
+    where: Prisma.restaurantsWhereInput,
+    clause: Prisma.restaurantsWhereInput,
+  ): void {
+    const keys = Object.keys(where).filter(
+      (k) => (where as Record<string, unknown>)[k] !== undefined,
+    );
+    if (keys.length === 0) {
+      Object.assign(where, clause);
+      return;
+    }
+    const prior = { ...where };
+    for (const k of keys) {
+      delete (where as Record<string, unknown>)[k];
+    }
+    where.AND = [prior, clause];
+  }
+
   /**
    * Strict radius: restaurants with PostGIS `geom`, plus `geom IS NULL` rows that have
    * lat/lng within the same meter radius (matches dish strict filter). Never returns
@@ -561,8 +585,9 @@ export class RestaurantsService implements OnModuleInit {
     }
 
     const qTrimmed = dto.q?.trim();
+    const dishCategoryTrimmed = firstQueryString(dto.dish_category)?.trim();
     let useMeilisearch =
-      !!qTrimmed && this.searchService.isConfigured();
+      !!qTrimmed && !dishCategoryTrimmed && this.searchService.isConfigured();
     let meiliCandidateIds: number[] | null = null;
 
     if (useMeilisearch) {
@@ -609,7 +634,7 @@ export class RestaurantsService implements OnModuleInit {
       }
     }
 
-    if (!useMeilisearch && dto.q && qTrimmed) {
+    if (!useMeilisearch && !dishCategoryTrimmed && dto.q && qTrimmed) {
       // Text search: restaurant name/city/district or menu item name/description (Prisma fallback)
       where.OR = [
         { name_default: { contains: qTrimmed, mode: 'insensitive' } },
@@ -694,7 +719,35 @@ export class RestaurantsService implements OnModuleInit {
       }
     }
 
-    const hasTextQuery = !!qTrimmed;
+    if (dishCategoryTrimmed) {
+      const terms = resolveDishCategoryKeywords(dishCategoryTrimmed);
+      if (terms.length === 0) {
+        this.mergeRestaurantWhereClause(where, { id: { equals: -1 } });
+      } else {
+        const itemOr = terms.map((term) => ({
+          name: { contains: term, mode: 'insensitive' as const },
+        }));
+        this.mergeRestaurantWhereClause(where, {
+          menus: {
+            some: {
+              is_active: true,
+              menu_sections: {
+                some: {
+                  menu_items: {
+                    some: {
+                      is_available: true,
+                      OR: itemOr,
+                    },
+                  },
+                },
+              },
+            },
+          },
+        });
+      }
+    }
+
+    const hasTextQuery = !!(qTrimmed || dishCategoryTrimmed);
     const strictGeoEffective = strictGeo && locationIds.length > 0;
     const sortMode = this.rankingService.resolveSortMode(
       dto,
@@ -724,8 +777,17 @@ export class RestaurantsService implements OnModuleInit {
       ((biasGeo && biasLat != null && biasLng != null) ||
         (strictGeoEffective && distanceById.size > 0));
 
+    const usePrismaQNameRank =
+      !!qTrimmed && !useMeilisearch && !dishCategoryTrimmed;
+    const useNameMatchOrdering =
+      usePrismaQNameRank &&
+      !useGeoDistanceSort &&
+      !useRankingGeoBlend &&
+      !useMeiliRelevanceOrder;
+
     const fetchLargeList =
-      useGeoDistanceSort || useMeiliRelevanceOrder || useRankingGeoBlend;
+      !useNameMatchOrdering &&
+      (useGeoDistanceSort || useMeiliRelevanceOrder || useRankingGeoBlend);
 
     const total = await this.prisma.restaurants.count({ where });
 
@@ -737,20 +799,32 @@ export class RestaurantsService implements OnModuleInit {
       );
     }
 
-    let rows = fetchLargeList
-      ? await this.prisma.restaurants.findMany({
-          where,
-          orderBy,
-          select: SELECT_RESTAURANT,
-          ...(capRankingBlend ? { take: RANKING_GEO_BLEND_MAX_ROWS } : {}),
-        })
-      : await this.prisma.restaurants.findMany({
-          where,
-          skip,
-          take,
-          orderBy,
-          select: SELECT_RESTAURANT,
-        });
+    let rows;
+    if (useNameMatchOrdering) {
+      const takeCap =
+        total > 0 ? Math.min(total, RESTAURANT_NAME_RANK_FETCH_CAP) : 0;
+      rows = await this.prisma.restaurants.findMany({
+        where,
+        ...(takeCap > 0 ? { take: takeCap } : {}),
+        orderBy: [{ id: 'asc' }],
+        select: SELECT_RESTAURANT,
+      });
+    } else if (fetchLargeList) {
+      rows = await this.prisma.restaurants.findMany({
+        where,
+        orderBy,
+        select: SELECT_RESTAURANT,
+        ...(capRankingBlend ? { take: RANKING_GEO_BLEND_MAX_ROWS } : {}),
+      });
+    } else {
+      rows = await this.prisma.restaurants.findMany({
+        where,
+        skip,
+        take,
+        orderBy,
+        select: SELECT_RESTAURANT,
+      });
+    }
 
     // If ranking signals are sparse and sorted result set is empty, fall back to a stable default list.
     let totalOut = total;
@@ -884,6 +958,18 @@ export class RestaurantsService implements OnModuleInit {
         (a, b) => (orderMap.get(a.id) ?? 9999) - (orderMap.get(b.id) ?? 9999),
       );
       data = attachDistance(sorted.slice(skip, skip + take));
+    } else if (useNameMatchOrdering && qTrimmed) {
+      const withD = attachDistance(rows);
+      withD.sort((a, b) =>
+        compareRestaurantNameRank(
+          a.name_default,
+          b.name_default,
+          qTrimmed,
+          a.rating,
+          b.rating,
+        ),
+      );
+      data = withD.slice(skip, skip + take);
     } else {
       data = attachDistance(rows);
     }

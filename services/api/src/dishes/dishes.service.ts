@@ -7,6 +7,8 @@ import { ConfigService } from '@nestjs/config';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { SRI_LANKA_DISTRICTS } from '../locations/data/sri-lanka-districts';
+import { resolveDishCategoryKeywords } from '../lib/dishKeywords';
+import { pgNameMatchTierLeastSql } from '../lib/nameMatchRank';
 import type { DishGeoQueryDto } from './dto/dish-geo.query.dto';
 
 /** Menu-item candidates before in-memory geo blend. */
@@ -275,6 +277,101 @@ export class DishesService {
     );
     if (clauses.length === 1) return Prisma.sql`AND ${clauses[0]}`;
     return Prisma.sql`AND (${Prisma.join(clauses, ' OR ')})`;
+  }
+
+  private escapeSqlLikeSubstring(input: string): string {
+    return input.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
+  }
+
+  /** Match restaurant cuisine tag (exact, case-insensitive) OR menu item name substring. */
+  private buildDishTextFilter(keyword: string): Prisma.Sql {
+    const trimmed = keyword.trim();
+    if (!trimmed) return Prisma.sql``;
+    const escaped = this.escapeSqlLikeSubstring(trimmed);
+    const pattern = `%${escaped}%`;
+    const tagMatch = Prisma.sql`EXISTS (SELECT 1 FROM unnest(r.cuisine_tags) AS ct WHERE LOWER(TRIM(ct)) = LOWER(${trimmed}))`;
+    const nameMatch = Prisma.sql`(LOWER(mi.name) LIKE LOWER(${pattern}) ESCAPE '\\')`;
+    return Prisma.sql`AND (${tagMatch} OR ${nameMatch})`;
+  }
+
+  /**
+   * `?category=` — `DISH_KEYWORDS[category] ?? [category]`; OR of substring matches on `mi.name` only.
+   */
+  private buildCategoryKeywordNameFilter(category: string): Prisma.Sql {
+    const uniq = resolveDishCategoryKeywords(category);
+    if (uniq.length === 0) return Prisma.sql`AND FALSE`;
+    const clauses = uniq.map((kw) => {
+      const pattern = `%${this.escapeSqlLikeSubstring(kw)}%`;
+      return Prisma.sql`(LOWER(mi.name) LIKE LOWER(${pattern}) ESCAPE '\\')`;
+    });
+    return Prisma.sql`AND (${Prisma.join(clauses, ' OR ')})`;
+  }
+
+  private parseDishSearchLimit(query: DishGeoQueryDto): number {
+    const raw = query.limit?.trim();
+    if (!raw) return 20;
+    const n = parseInt(raw, 10);
+    if (Number.isNaN(n) || n < 1) return 20;
+    return Math.min(n, 50);
+  }
+
+  private parseDishSearchOffset(query: DishGeoQueryDto): number {
+    const raw = query.offset?.trim();
+    if (!raw) return 0;
+    const n = parseInt(raw, 10);
+    if (Number.isNaN(n) || n < 0) return 0;
+    return Math.min(n, 500);
+  }
+
+  private parseDishSearchSort(query: DishGeoQueryDto): 'default' | 'popular' | 'trending' | 'distance' {
+    const s = query.sort?.trim().toLowerCase();
+    if (s === 'trending' || s === 'distance' || s === 'popular' || s === 'default') return s;
+    return 'default';
+  }
+
+  /** ORDER BY for GET /dishes search pool. */
+  private dishSearchOrderBy(
+    sort: 'default' | 'popular' | 'trending' | 'distance',
+    useGeo: boolean,
+  ): Prisma.Sql {
+    const distTail = this.dishPoolDistanceOrderSql(useGeo);
+    if (sort === 'trending') {
+      return Prisma.sql`
+      ORDER BY COALESCE(mi.click_count, 0)::int DESC,
+        mi.is_popular DESC,
+        mi.is_recommended DESC,
+        r.popular_score DESC NULLS LAST
+        ${distTail},
+        mi.id ASC`;
+    }
+    if (sort === 'distance' && useGeo) {
+      return Prisma.sql`
+      ORDER BY rest_dist_km ASC NULLS LAST,
+        mi.is_popular DESC,
+        mi.is_recommended DESC,
+        r.popular_score DESC NULLS LAST,
+        mi.id ASC`;
+    }
+    return Prisma.sql`
+      ORDER BY mi.is_popular DESC,
+        mi.is_recommended DESC,
+        r.popular_score DESC NULLS LAST
+        ${distTail},
+        mi.id ASC`;
+  }
+
+  /** Name / keyword match quality: exact → prefix → word → substring, then length & rating. */
+  private buildDishNameMatchOrderSql(terms: string[], useGeo: boolean): Prisma.Sql {
+    const miName = Prisma.raw('mi.name');
+    const tier = pgNameMatchTierLeastSql(miName, terms);
+    const distTail = this.dishPoolDistanceOrderSql(useGeo);
+    return Prisma.sql`
+      ORDER BY
+        ${tier} ASC,
+        LENGTH(mi.name) ASC,
+        r.rating DESC NULLS LAST
+        ${distTail},
+        mi.id ASC`;
   }
 
   /** Same parsing as restaurant search: comma-separated, trimmed, de-duped. */
@@ -748,5 +845,100 @@ export class DishesService {
     }
 
     return parsed.slice(0, 16).map((r) => this.mapRow(r));
+  }
+
+  /**
+   * GET /dishes — `category` (name-keyword map), or `q` (free text + cuisine tag), plus geo/district/limit/offset/sort.
+   */
+  async searchDishes(query: DishGeoQueryDto = {}): Promise<DishDiscoveryRow[]> {
+    const category = query.category?.trim();
+    const q = query.q?.trim();
+    if (!category && !q) return [];
+
+    const strictGeo = this.parseStrictGeo(query);
+    const biasPoint = this.parseBiasPoint(query);
+    const geoFilter =
+      strictGeo != null ? this.buildLocationFilter(strictGeo) : Prisma.sql``;
+    const districtNames = this.parseDistrictList(query);
+    const districtFilter = this.buildDistrictFilter(districtNames);
+    const textFilter = category
+      ? this.buildCategoryKeywordNameFilter(category)
+      : this.buildDishTextFilter(q!);
+    const limit = this.parseDishSearchLimit(query);
+    const parsedOffset = this.parseDishSearchOffset(query);
+    const sortMode = this.parseDishSearchSort(query);
+
+    const geoLat = strictGeo?.lat ?? biasPoint?.lat;
+    const geoLng = strictGeo?.lng ?? biasPoint?.lng;
+    const useDishGeoBlend = geoLat != null && geoLng != null;
+    const distSelect = useDishGeoBlend
+      ? this.dishRestDistanceKmSelectSql(geoLat, geoLng)
+      : Prisma.sql``;
+    const blendMode: 'none' | 'bias' | 'strict' = strictGeo
+      ? 'strict'
+      : useDishGeoBlend
+        ? 'bias'
+        : 'none';
+    const poolLimit = Math.min(Math.max(limit * 4, 40), 120);
+    const dishGeoKind: 'bias' | 'strict' =
+      blendMode === 'strict' ? 'strict' : 'bias';
+    const rankTerms = category
+      ? resolveDishCategoryKeywords(category)
+      : q
+        ? [q.trim().toLowerCase()].filter(Boolean)
+        : [];
+    const useNameRankOrder =
+      rankTerms.length > 0 && (sortMode === 'default' || sortMode === 'popular');
+    const orderBySql = useNameRankOrder
+      ? this.buildDishNameMatchOrderSql(rankTerms, useDishGeoBlend)
+      : this.dishSearchOrderBy(sortMode, useDishGeoBlend);
+
+    const rows = await this.prisma.$queryRaw<
+      (RawDishRow & { restaurant_popular_score: number | null; rest_dist_km?: unknown })[]
+    >(Prisma.sql`
+      SELECT
+        mi.id,
+        mi.name,
+        mi.price,
+        mi.currency,
+        COALESCE(ma.secure_url, mi.image_url) AS image_url,
+        mi.is_popular,
+        mi.is_recommended,
+        COALESCE(mi.click_count, 0)::int AS click_count,
+        ms.menu_id,
+        r.id AS restaurant_id,
+        r.name_default AS restaurant_name,
+        r.rating AS restaurant_rating,
+        r.popular_score AS restaurant_popular_score
+        ${distSelect}
+      FROM menu_items mi
+      LEFT JOIN media_assets ma ON ma.id = mi.media_asset_id
+      INNER JOIN menu_sections ms ON mi.menu_section_id = ms.id
+      INNER JOIN menus m ON ms.menu_id = m.id
+      INNER JOIN restaurants r ON m.restaurant_id = r.id
+      WHERE m.is_active = true
+        AND mi.is_available = true
+        ${geoFilter}
+        ${districtFilter}
+        ${textFilter}
+      ${orderBySql}
+      LIMIT ${poolLimit} OFFSET ${parsedOffset}
+    `);
+
+    let parsed = this.parseDishRestDistKm(rows);
+    const useBlendSort =
+      !useNameRankOrder &&
+      useDishGeoBlend &&
+      parsed.length > 1 &&
+      (sortMode === 'default' || sortMode === 'popular');
+    if (useBlendSort) {
+      parsed.sort(
+        (a, b) =>
+          this.featuredDishBlend(b, dishGeoKind) -
+          this.featuredDishBlend(a, dishGeoKind),
+      );
+    }
+
+    return parsed.slice(0, limit).map((r) => this.mapRow(r));
   }
 }

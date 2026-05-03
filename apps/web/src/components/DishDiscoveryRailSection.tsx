@@ -8,6 +8,13 @@ import { HorizontalScroll } from '@/components/ui/HorizontalScroll';
 import { useHasMounted } from '@/hooks/useHasMounted';
 import { HomeSectionHeader } from '@/components/home/HomeSectionHeader';
 import { Skeleton } from '@/components/ui/Skeleton';
+import { DishFavoriteButton } from '@/components/ui/DishFavoriteButton';
+
+export type DishRailFavouritesProps = {
+  isFavourited: (id: number) => boolean;
+  onToggle: (id: number) => void | Promise<void>;
+  loadingId: number | null;
+};
 
 export type DishDiscoveryRailSectionProps = {
   title: string;
@@ -22,6 +29,8 @@ export type DishDiscoveryRailSectionProps = {
   locationLabel?: string | null;
   badgeMode: 'popular' | 'trending';
   onSeeAll?: () => void;
+  /** When set, shows a favourite control on each dish image (single hook at page level). */
+  dishFavourites?: DishRailFavouritesProps | null;
 };
 
 function dishQueryHasScope(q: Record<string, string | number>): boolean {
@@ -56,7 +65,7 @@ function dishHref(d: DishDiscoveryItem): string {
 
 function PopularImageBadge() {
   return (
-    <div className="absolute right-2 top-2 rounded-full bg-orange-500/90 px-2 py-1 text-xs font-medium text-white shadow-sm">
+    <div className="absolute left-2 top-2 rounded-full bg-orange-500/90 px-2 py-1 text-xs font-medium text-white shadow-sm">
       🔥 Popular
     </div>
   );
@@ -64,13 +73,13 @@ function PopularImageBadge() {
 
 function TrendingImageBadge() {
   return (
-    <div className="absolute right-2 top-2 rounded-full bg-blue-500/90 px-2 py-1 text-xs font-medium text-white shadow-sm">
+    <div className="absolute left-2 top-2 rounded-full bg-blue-500/90 px-2 py-1 text-xs font-medium text-white shadow-sm">
       ⚡ Trending
     </div>
   );
 }
 
-const DISH_CARD_WIDTH = 'w-[min(260px,calc(100vw-2.75rem))] shrink-0 snap-start';
+const DISH_CARD_WIDTH = 'w-[min(312px,calc(100vw-2.75rem))] shrink-0 snap-start';
 
 function DishDiscoverySkeletonRow() {
   return (
@@ -78,14 +87,14 @@ function DishDiscoverySkeletonRow() {
       {Array.from({ length: 6 }).map((_, i) => (
         <div key={i} className={DISH_CARD_WIDTH}>
           <div
-            className="overflow-hidden rounded-2xl border shadow-sm"
+            className="lm-card-shadow overflow-hidden rounded-2xl border"
             style={{ borderColor: 'var(--border)', backgroundColor: 'var(--surface)' }}
           >
             <Skeleton className="h-[160px] w-full rounded-none" />
-            <div className="space-y-2 p-3">
-              <Skeleton className="h-4 w-[90%]" />
-              <Skeleton className="h-4 w-16" />
-              <Skeleton className="h-3 w-[70%]" />
+            <div className="space-y-1 p-3">
+              <Skeleton className="min-h-[2.25rem] w-[94%] rounded-md" />
+              <Skeleton className="h-[1.125rem] w-20 rounded-md" />
+              <Skeleton className="h-[0.875rem] w-[78%] rounded-md" />
             </div>
           </div>
         </div>
@@ -103,6 +112,7 @@ export function DishDiscoveryRailSection({
   locationLabel = null,
   badgeMode,
   onSeeAll,
+  dishFavourites = null,
 }: DishDiscoveryRailSectionProps) {
   const hasMounted = useHasMounted();
   const [dishes, setDishes] = useState<DishDiscoveryItem[] | null>(null);
@@ -215,7 +225,7 @@ export function DishDiscoveryRailSection({
                   >
                     <Link
                       href={href}
-                      className="group relative block overflow-hidden rounded-2xl border shadow-sm outline-none transition-transform duration-200 active:scale-[0.99] hover:scale-[1.02] focus-visible:ring-2 focus-visible:ring-[color-mix(in_srgb,var(--accent-primary)_55%,transparent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)]"
+                      className="lm-card-shadow group relative block overflow-hidden rounded-2xl border outline-none transition-[transform,box-shadow] duration-200 active:scale-[0.99] hover:scale-[1.02] focus-visible:ring-2 focus-visible:ring-[color-mix(in_srgb,var(--accent-primary)_55%,transparent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)]"
                       style={{ borderColor: 'var(--border)', backgroundColor: 'var(--surface)' }}
                     >
                       <div className="relative h-[160px] overflow-hidden">
@@ -239,6 +249,27 @@ export function DishDiscoveryRailSection({
                         )}
                         <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
                         {imageBadge}
+                        {dishFavourites ? (
+                          <div
+                            className="absolute right-2 top-2 z-[2]"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                            }}
+                            onKeyDown={(e) => e.key === 'Enter' && e.preventDefault()}
+                            role="presentation"
+                          >
+                            <DishFavoriteButton
+                              isFavourited={dishFavourites.isFavourited(d.id)}
+                              loading={dishFavourites.loadingId === d.id}
+                              onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                void dishFavourites.onToggle(d.id);
+                              }}
+                            />
+                          </div>
+                        ) : null}
                       </div>
                       <div className="space-y-1 p-3">
                         <h3
@@ -315,10 +346,7 @@ export function NearbyDishesSection(
     <DishDiscoveryRailSection
       {...rest}
       title="🍽 Dishes for you"
-      sectionSubtitle={
-        sectionSubtitle ??
-        'Menu items from venues whose tags overlap your selection (not a dish taxonomy)'
-      }
+      sectionSubtitle={sectionSubtitle ?? 'Dishes from places near you'}
       apiPath="/dishes/nearby"
       badgeMode="popular"
     />

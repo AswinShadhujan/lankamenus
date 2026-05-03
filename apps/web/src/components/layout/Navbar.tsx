@@ -2,7 +2,6 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import Link from 'next/link';
-import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 import { useTheme } from '@/components/ThemeProvider';
 import { SearchBar } from '@/components/ui/SearchBar';
@@ -19,6 +18,29 @@ type NavbarProps = {
   onSearchSubmit?: (value: string) => void;
 };
 
+function NavbarThemeToggle() {
+  const { theme, toggleTheme, mounted: themeMounted } = useTheme();
+  return (
+    <button
+      type="button"
+      onClick={toggleTheme}
+      className="rounded-md p-1.5 transition-colors hover:bg-[var(--surface)]"
+      style={{ color: 'var(--text-secondary)' }}
+      aria-label={
+        themeMounted
+          ? theme === 'dark'
+            ? 'Switch to light mode'
+            : 'Switch to dark mode'
+          : 'Toggle color theme'
+      }
+    >
+      <span className="inline-block min-w-[1.25rem] text-center">
+        {themeMounted ? (theme === 'dark' ? '☀️' : '🌙') : '🌓'}
+      </span>
+    </button>
+  );
+}
+
 export function Navbar({
   hasToken,
   isAdmin = false,
@@ -28,7 +50,6 @@ export function Navbar({
   onSearchSubmit,
 }: NavbarProps) {
   const pathname = usePathname();
-  const { theme, toggleTheme, mounted: themeMounted } = useTheme();
   const [localQuery, setLocalQuery] = useState(searchValue);
   /** On `/`, URL `q` is debounced in MainLayout — keep a local draft so suggestions track keystrokes immediately. */
   const [homeDraft, setHomeDraft] = useState(searchValue);
@@ -133,39 +154,58 @@ export function Navbar({
   }, [clearBlurTimer]);
 
   return (
-    <header
-      className={`sticky top-0 z-50 border-b transition-colors duration-200 ${
-        isHome ? 'backdrop-blur-md supports-[backdrop-filter]:bg-[var(--background)]/80' : ''
-      }`}
-      style={{ borderColor: 'var(--border)', backgroundColor: 'var(--background)' }}
-    >
+    <header className="lm-header-tribal sticky top-0 z-50 transition-colors duration-200">
       <div
-        className={`mx-auto flex max-w-screen-xl flex-col gap-3 px-4 py-3 sm:px-6 md:flex-row md:items-center md:gap-4 ${isHome ? 'md:py-3' : 'md:py-2'}`}
+        className={`lm-header-tribal-inner mx-auto flex w-full max-w-none flex-col gap-2 px-4 py-2 sm:px-6 md:flex-row md:items-center md:gap-3 lg:px-8 xl:px-10 ${isHome ? 'md:py-2' : 'md:py-1.5'}`}
       >
-        <Link
-          href="/"
-          className="order-1 flex min-w-0 shrink-0 items-center gap-2 text-h2 transition-opacity hover:opacity-90 active:opacity-80 sm:gap-3"
-          style={{ color: 'var(--text-primary)' }}
-        >
-          <Image
-            src="/logo.png"
-            alt="Lankamenus"
-            width={128}
-            height={32}
-            className="h-7 w-auto max-h-8 shrink-0 bg-transparent object-contain object-left sm:h-8"
-            placeholder="empty"
-            priority
-          />
-          <span className="min-w-0 truncate font-semibold tracking-tight">Lankamenus</span>
-        </Link>
+        <div className="flex w-full min-w-0 items-center justify-between gap-2 md:w-auto md:justify-start md:gap-3">
+          <Link
+            href="/"
+            className="lm-header-logo min-w-0 shrink-0 transition-opacity hover:opacity-90 active:opacity-80"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              textDecoration: 'none',
+              background: 'transparent',
+            }}
+          >
+            <span
+              style={{
+                display: 'block',
+                lineHeight: 0,
+                background: 'transparent',
+              }}
+            >
+              <img
+                src="/logo_cleaned_square.png"
+                alt="Lankamenus"
+                width={40}
+                height={40}
+                style={{
+                  width: '40px',
+                  height: '40px',
+                  objectFit: 'contain',
+                  display: 'block',
+                }}
+              />
+            </span>
+            <span
+              className="min-w-0 truncate text-lg font-semibold leading-tight tracking-tight sm:text-xl"
+              style={{ color: 'var(--accent-primary)' }}
+            >
+              Lankamenus
+            </span>
+          </Link>
+          <div className="shrink-0 md:hidden">
+            <NavbarThemeToggle />
+          </div>
+        </div>
 
-        <div
-          id="search"
-          className="order-3 w-full min-w-0 md:order-2 md:flex md:flex-1 md:justify-center"
-        >
+        <div id="search" className="w-full min-w-0 md:flex md:flex-1 md:justify-center">
           <div
             ref={searchShellRef}
-            className={`relative w-full min-w-0 ${isHome ? 'md:mx-auto md:max-w-3xl' : 'md:mx-auto md:max-w-md'}`}
+            className={`relative w-full min-w-0 ${isHome ? 'md:mx-auto md:max-w-4xl lg:max-w-5xl xl:max-w-6xl 2xl:max-w-7xl' : 'md:mx-auto md:max-w-md'}`}
             onBlurCapture={handleSearchShellBlurCapture}
           >
             <SearchBar
@@ -197,35 +237,16 @@ export function Navbar({
           </div>
         </div>
 
-        <nav className="order-2 flex shrink-0 items-center justify-end gap-1 sm:gap-3 md:order-3 md:ml-auto">
+        <nav className="hidden md:flex md:ml-auto shrink-0 items-center justify-end gap-1 sm:gap-3">
           <Link
             href="/favourites"
             className="rounded-md px-2 py-1.5 transition-colors hover:bg-[var(--surface)]"
             style={{ color: pathname === '/favourites' ? 'var(--accent-primary)' : 'var(--text-primary)' }}
             title="Favourites"
           >
-            <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="md:hidden" aria-hidden>
-              <path d="M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 0 0 0-7.78z" />
-            </svg>
-            <span className="hidden text-small md:inline">Favourites</span>
+            <span className="text-small">Favourites</span>
           </Link>
-          <button
-            type="button"
-            onClick={toggleTheme}
-            className="rounded-md p-1.5 transition-colors hover:bg-[var(--surface)]"
-            style={{ color: 'var(--text-secondary)' }}
-            aria-label={
-              themeMounted
-                ? theme === 'dark'
-                  ? 'Switch to light mode'
-                  : 'Switch to dark mode'
-                : 'Toggle color theme'
-            }
-          >
-            <span className="inline-block min-w-[1.25rem] text-center">
-              {themeMounted ? (theme === 'dark' ? '☀️' : '🌙') : '🌓'}
-            </span>
-          </button>
+          <NavbarThemeToggle />
           {hasToken ? (
             <>
               {isAdmin && (
@@ -259,32 +280,22 @@ export function Navbar({
             <>
               <Link
                 href="/login"
-                className="rounded-md px-2 py-1.5 transition-colors hover:bg-[var(--surface)]"
+                className="text-small rounded-md px-2 py-1.5 transition-colors hover:bg-[var(--surface)]"
                 style={{ color: 'var(--text-primary)' }}
                 title="Log in"
               >
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="md:hidden" aria-hidden>
-                  <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-                  <circle cx="12" cy="7" r="4" />
-                </svg>
-                <span className="hidden text-small md:inline">Log in</span>
+                Log in
               </Link>
               <Link
                 href="/register"
-                className="rounded-md px-2 py-1.5 text-small font-medium transition-colors md:px-3"
+                className="hidden rounded-md px-3 py-1.5 text-small font-medium text-center transition-colors hover:opacity-95 md:block"
                 style={{
                   backgroundColor: 'var(--accent-primary)',
                   color: '#fff',
                 }}
                 title="Sign up"
               >
-                <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="md:hidden" aria-hidden>
-                  <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
-                  <circle cx="8.5" cy="7" r="4" />
-                  <line x1="20" y1="8" x2="20" y2="14" />
-                  <line x1="23" y1="11" x2="17" y2="11" />
-                </svg>
-                <span className="hidden md:inline">Sign up</span>
+                Sign up
               </Link>
             </>
           )}

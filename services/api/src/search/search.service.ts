@@ -1,21 +1,13 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Meilisearch } from 'meilisearch';
 import { PrismaService } from '../prisma/prisma.service';
+import { rankRestaurantNameMeta } from '../lib/nameMatchRank';
 import { MEILISEARCH_INDEX_RESTAURANTS } from './constants';
 import type { RestaurantSearchDocument } from './search-index.types';
 
-const SEARCHABLE_ATTRIBUTES = [
-  'name_default',
-  'city',
-  'district',
-  'cuisine_tags',
-  'menu_item_names',
-  'menu_item_descriptions',
-] as const;
-
 @Injectable()
-export class SearchService {
+export class SearchService implements OnModuleInit {
   private readonly logger = new Logger(SearchService.name);
   private client: Meilisearch | null = null;
   private indexEnsured = false;
@@ -31,6 +23,10 @@ export class SearchService {
         apiKey: this.config.get<string>('MEILISEARCH_API_KEY') || undefined,
       });
     }
+  }
+
+  async onModuleInit(): Promise<void> {
+    await this.applyIndexSettings();
   }
 
   /** Whether Meilisearch is configured and available. */
@@ -49,20 +45,51 @@ export class SearchService {
   }
 
   /**
-   * Set searchable attributes on the restaurants index. Idempotent.
-   * Call after adding documents so the index exists.
+   * Set searchable attributes, ranking rules, and distinct attribute on the restaurants index.
+   * Idempotent unless `indexEnsured` is cleared (see `applyIndexSettings`).
    */
   private async ensureSearchableAttributes(): Promise<void> {
     if (!this.client || this.indexEnsured) return;
     try {
       const index = this.client.index(MEILISEARCH_INDEX_RESTAURANTS);
-      await index.updateSearchableAttributes([...SEARCHABLE_ATTRIBUTES]);
+
+      // Attribute order = search priority. name_default is first so
+      // a name match always outranks a menu_item or city match.
+      await index.updateSearchableAttributes([
+        'name_default',
+        'cuisine_tags',
+        'city',
+        'district',
+        'menu_item_names',
+        'menu_item_descriptions',
+      ]);
+
+      // Ranking rules: typo before attribute so exact/prefix-style name
+      // matches beat mid-word hits in lower-priority fields.
+      await index.updateRankingRules([
+        'words',
+        'typo',
+        'proximity',
+        'attribute',
+        'sort',
+        'exactness',
+      ]);
+
+      // Distinct attribute: prefer collapsing/diversity on venue name facet.
+      await index.updateDistinctAttribute('name_default');
+
       this.indexEnsured = true;
     } catch (err) {
       this.logger.warn(
-        `Meilisearch: could not set searchable attributes (${(err as Error).message})`,
+        `Meilisearch: could not set index settings (${(err as Error).message})`,
       );
     }
+  }
+
+  /** Force-apply Meilisearch index settings immediately (does not wait for next indexRestaurant). */
+  async applyIndexSettings(): Promise<void> {
+    this.indexEnsured = false;
+    await this.ensureSearchableAttributes();
   }
 
   /**
@@ -164,15 +191,30 @@ export class SearchService {
     const index = this.client.index<RestaurantSearchDocument>(MEILISEARCH_INDEX_RESTAURANTS);
     const res = await index.search(q, {
       limit,
-      attributesToRetrieve: ['id'],
+      attributesToRetrieve: ['id', 'name_default'],
     });
-    const ids = (res.hits ?? []).map((hit) => hit.id);
+    const hits = res.hits ?? [];
+    const ids = hits.map((hit) => hit.id);
     const totalHits =
       'estimatedTotalHits' in res
         ? (res as { estimatedTotalHits: number }).estimatedTotalHits
         : 'totalHits' in res
           ? (res as { totalHits: number }).totalHits
           : ids.length;
-    return { ids, totalHits };
+
+    // Re-rank Meilisearch hits by name prefix tier so name matches trump menu/city relevance.
+    const scoredIds = ids.map((id, meiliRank) => {
+      const name =
+        hits.find((h) => h.id === id)?.name_default ?? '';
+      const tier = rankRestaurantNameMeta(name, q).tier;
+      return { id, tier, meiliRank };
+    });
+    scoredIds.sort(
+      (a, b) => a.tier - b.tier || a.meiliRank - b.meiliRank,
+    );
+    return {
+      ids: scoredIds.map((s) => s.id),
+      totalHits,
+    };
   }
 }

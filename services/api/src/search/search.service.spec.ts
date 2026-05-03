@@ -7,6 +7,8 @@ import { MEILISEARCH_INDEX_RESTAURANTS } from './constants';
 const mockIndex = {
   addDocuments: jest.fn().mockResolvedValue(undefined),
   updateSearchableAttributes: jest.fn().mockResolvedValue(undefined),
+  updateRankingRules: jest.fn().mockResolvedValue(undefined),
+  updateDistinctAttribute: jest.fn().mockResolvedValue(undefined),
   deleteDocument: jest.fn().mockResolvedValue(undefined),
   search: jest.fn().mockResolvedValue({ hits: [], estimatedTotalHits: 0 }),
 };
@@ -26,6 +28,8 @@ describe('SearchService', () => {
     jest.clearAllMocks();
     mockIndex.addDocuments.mockResolvedValue(undefined);
     mockIndex.updateSearchableAttributes.mockResolvedValue(undefined);
+    mockIndex.updateRankingRules.mockResolvedValue(undefined);
+    mockIndex.updateDistinctAttribute.mockResolvedValue(undefined);
     mockIndex.deleteDocument.mockResolvedValue(undefined);
     mockIndex.search.mockResolvedValue({ hits: [], estimatedTotalHits: 0 });
 
@@ -193,6 +197,8 @@ describe('SearchService', () => {
         { primaryKey: 'id' },
       );
       expect(mockIndex.updateSearchableAttributes).toHaveBeenCalled();
+      expect(mockIndex.updateRankingRules).toHaveBeenCalled();
+      expect(mockIndex.updateDistinctAttribute).toHaveBeenCalledWith('name_default');
     });
 
     it('indexRestaurant should not call addDocuments when buildRestaurantDocument returns null', async () => {
@@ -206,16 +212,20 @@ describe('SearchService', () => {
       expect(mockIndex.deleteDocument).toHaveBeenCalledWith(5);
     });
 
-    it('searchRestaurantIds should return ids and totalHits from search response', async () => {
+    it('searchRestaurantIds should return ids and totalHits and re-rank by name prefix tier', async () => {
       mockIndex.search.mockResolvedValue({
-        hits: [{ id: 2 }, { id: 1 }],
+        hits: [
+          { id: 2, name_default: 'Tamil Pasanga Mutton Shop' },
+          { id: 1, name_default: 'Pasan Cafe' },
+        ],
         estimatedTotalHits: 10,
       });
-      const result = await service.searchRestaurantIds('rice', { limit: 100 });
-      expect(result).toEqual({ ids: [2, 1], totalHits: 10 });
-      expect(mockIndex.search).toHaveBeenCalledWith('rice', {
+      const result = await service.searchRestaurantIds('pasan', { limit: 100 });
+      expect(result.totalHits).toBe(10);
+      expect(result.ids).toEqual([1, 2]);
+      expect(mockIndex.search).toHaveBeenCalledWith('pasan', {
         limit: 100,
-        attributesToRetrieve: ['id'],
+        attributesToRetrieve: ['id', 'name_default'],
       });
     });
 

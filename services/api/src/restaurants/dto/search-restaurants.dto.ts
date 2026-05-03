@@ -113,6 +113,16 @@ export class SearchRestaurantsDto {
   @MaxLength(500)
   district?: string;
 
+  /**
+   * Dish-category pill: restrict to venues with ≥1 active menu item whose name matches any
+   * `DISH_KEYWORDS` term (`services/api/src/lib/dishKeywords.ts`).
+   * (Avoid `@Transform` here — must stay class-validator-whitelist-visible with forbidNonWhitelisted.)
+   */
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  dish_category?: string;
+
   @IsOptional()
   @IsString()
   @MaxLength(100)

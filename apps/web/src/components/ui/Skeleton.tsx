@@ -11,10 +11,10 @@ export function Skeleton({ className = '' }: SkeletonBlockProps) {
   return <div className={`skeleton-shimmer rounded-md ${className}`} aria-hidden />;
 }
 
-export type SkeletonCardVariant = 'grid' | 'rail';
+export type SkeletonCardVariant = 'grid' | 'rail' | 'compact';
 
 type SkeletonCardProps = {
-  /** `grid` matches default `RestaurantCard`; `rail` matches `variant="rail"`. */
+  /** `grid` / `compact` vs default `RestaurantCard`; `rail` vs `variant="rail"`. */
   variant?: SkeletonCardVariant;
   className?: string;
 };
@@ -25,33 +25,52 @@ type SkeletonCardProps = {
  */
 export function SkeletonCard({ variant = 'grid', className = '' }: SkeletonCardProps) {
   const isRail = variant === 'rail';
+  const isCompact = variant === 'compact';
 
   return (
     <div
-      className={`overflow-hidden rounded-xl border shadow-sm ${
-        isRail ? 'w-full max-w-[280px]' : 'flex h-full min-h-0 w-full flex-col'
-      } ${className}`}
+      className={`lm-card-shadow flex h-full min-h-0 w-full flex-col overflow-hidden rounded-xl border ${className}`}
       style={{ borderColor: 'var(--border)', backgroundColor: 'var(--surface)' }}
       aria-hidden
     >
       <Skeleton
-        className={`w-full shrink-0 ${isRail ? 'aspect-[4/3]' : 'aspect-[16/9]'}`}
+        className={`w-full shrink-0 ${
+          isRail ? 'aspect-[16/10]' : isCompact ? 'aspect-[2/1]' : 'aspect-[16/9]'
+        }`}
       />
       <div
-        className={`flex flex-1 flex-col ${isRail ? 'p-3' : 'min-h-[7.25rem] p-4'}`}
+        className={`flex min-h-0 flex-1 flex-col ${
+          isRail ? 'p-3' : isCompact ? 'min-h-[5.25rem] p-3' : 'min-h-[7.25rem] p-4'
+        }`}
       >
-        <Skeleton className="mb-1 min-h-[2.5rem] w-[88%]" />
+        <Skeleton
+          className={`mb-1 w-[88%] rounded-md ${
+            isRail
+              ? 'h-[2.5rem]'
+              : isCompact
+                ? 'h-[2.75rem]'
+                : 'h-[2.75rem]'
+          }`}
+        />
         <div
-          className={`flex min-h-[1.35rem] flex-wrap items-center gap-1.5 ${
-            isRail ? 'mb-1' : 'mb-2'
+          className={`flex flex-wrap items-center gap-1.5 overflow-hidden ${
+            isRail
+              ? 'mb-1 h-6 shrink-0'
+              : isCompact
+                ? 'mb-1 min-h-6 shrink-0'
+                : 'mb-2 min-h-[1.35rem]'
           }`}
         >
           <Skeleton className="h-5 w-14 shrink-0 rounded-md" />
-          <Skeleton className="h-4 min-w-0 max-w-[65%] flex-1" />
+          <Skeleton
+            className={`min-w-0 max-w-[65%] flex-1 rounded-md ${isRail || isCompact ? 'h-[1.375rem]' : 'h-4'}`}
+          />
         </div>
-        <div className="mt-auto space-y-0.5">
-          <Skeleton className={isRail ? 'h-3 w-24' : 'h-4 w-32'} />
-          <Skeleton className={isRail ? 'h-3 w-[92%]' : 'h-4 w-4/5'} />
+        <div
+          className={`mt-auto space-y-0.5 ${isRail ? 'min-h-[2.5rem]' : isCompact ? 'min-h-[2rem]' : ''}`}
+        >
+          <Skeleton className={isRail || isCompact ? 'h-3 w-24 rounded-md' : 'h-4 w-32 rounded-md'} />
+          <Skeleton className={isRail || isCompact ? 'h-3 w-[92%] rounded-md' : 'h-4 w-4/5 rounded-md'} />
         </div>
       </div>
     </div>
@@ -74,7 +93,10 @@ export function SkeletonRow({ count = RAIL_SKELETON_COUNT_DEFAULT, className = '
   return (
     <HorizontalScroll className={className}>
       {Array.from({ length: n }).map((_, i) => (
-        <div key={i} className="min-w-[240px] max-w-[280px] flex-shrink-0 snap-start">
+        <div
+          key={i}
+          className="flex w-[min(326px,calc(100vw-5rem))] shrink-0 snap-start flex-col sm:w-[336px]"
+        >
           <SkeletonCard variant="rail" />
         </div>
       ))}

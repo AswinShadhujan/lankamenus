@@ -100,29 +100,30 @@ model menu_sections {
 }
 
 model menu_items {
-  id              Int           @id @default(autoincrement())
-  menu_section_id Int
-  name            String
-  description     String?
-  price           Decimal?      @db.Decimal(10, 2)
-  currency        String?       @default("LKR")
-  veg             Boolean?      @default(false)
-  sort_order      Int           @default(0)
-  created_at      DateTime      @default(now())
-  updated_at      DateTime      @updatedAt
-  ingredients     String[]      @default([])
-  rating          Float?        @map("rating")
-  rating_count    Int?          @default(0) @map("rating_count")
+  id                   Int                    @id @default(autoincrement())
+  menu_section_id      Int
+  name                 String
+  description          String?
+  price                Decimal?               @db.Decimal(10, 2)
+  currency             String?                @default("LKR")
+  veg                  Boolean?               @default(false)
+  sort_order           Int                    @default(0)
+  created_at           DateTime               @default(now())
+  updated_at           DateTime               @updatedAt
+  ingredients          String[]               @default([])
+  rating               Float?                 @map("rating")
+  rating_count         Int?                   @default(0) @map("rating_count")
   /// Dish detail views; used by GET /dishes/trending and incremented in MenusService.findOneItem.
-  click_count     Int           @default(0) @map("click_count")
-  image_url       String?       @map("image_url")
+  click_count          Int                    @default(0) @map("click_count")
+  image_url            String?                @map("image_url")
   /** Primary dish image: Cloudinary upload or external URL via media_assets. */
-  media_asset_id  Int?          @map("media_asset_id")
-  is_available    Boolean       @default(true) @map("is_available")
-  is_popular      Boolean       @default(false) @map("is_popular")
-  is_recommended  Boolean       @default(false) @map("is_recommended")
-  menu_section    menu_sections @relation(fields: [menu_section_id], references: [id], onDelete: Cascade)
-  media_asset     media_assets? @relation(fields: [media_asset_id], references: [id], onDelete: SetNull)
+  media_asset_id       Int?                   @map("media_asset_id")
+  is_available         Boolean                @default(true) @map("is_available")
+  is_popular           Boolean                @default(false) @map("is_popular")
+  is_recommended       Boolean                @default(false) @map("is_recommended")
+  menu_section         menu_sections          @relation(fields: [menu_section_id], references: [id], onDelete: Cascade)
+  media_asset          media_assets?          @relation(fields: [media_asset_id], references: [id], onDelete: SetNull)
+  user_dish_favourites user_dish_favourites[]
 
   @@index([menu_section_id])
   @@index([media_asset_id])
@@ -151,15 +152,16 @@ model spatial_ref_sys {
 }
 
 model users {
-  id             Int              @id @default(autoincrement())
-  email          String           @unique
-  password       String?
-  name           String?
-  role           String           @default("user")
-  created_at     DateTime         @default(now())
-  avatar_url     String?          @map("avatar_url")
-  auth_providers auth_providers[]
-  favourites     favourites[]
+  id                   Int                    @id @default(autoincrement())
+  email                String                 @unique
+  password             String?
+  name                 String?
+  role                 String                 @default("user")
+  created_at           DateTime               @default(now())
+  avatar_url           String?                @map("avatar_url")
+  auth_providers       auth_providers[]
+  favourites           favourites[]
+  user_dish_favourites user_dish_favourites[]
 }
 
 model auth_providers {
@@ -183,6 +185,19 @@ model favourites {
   user          users       @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
   @@unique([user_id, restaurant_id])
+}
+
+model user_dish_favourites {
+  id         Int        @id @default(autoincrement())
+  user_id    Int
+  dish_id    Int
+  created_at DateTime   @default(now())
+  user       users      @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  menu_items menu_items @relation(fields: [dish_id], references: [id], onDelete: Cascade)
+
+  @@unique([user_id, dish_id])
+  @@index([user_id])
+  @@index([dish_id])
 }
 
 model media_assets {

@@ -41,4 +41,20 @@ export class DishesController {
     }
     return this.dishes.getNearby(query);
   }
+
+  /**
+   * Keyword / category dish search (after static segments).
+   * Expose both `/dishes` and `/dishes/search`: some setups fail to bind `GET '/'` reliably.
+   */
+  @Public()
+  @Get('search')
+  searchWithPath(@Query() query: DishGeoQueryDto) {
+    return this.dishes.searchDishes(query);
+  }
+
+  @Public()
+  @Get()
+  searchRoot(@Query() query: DishGeoQueryDto) {
+    return this.dishes.searchDishes(query);
+  }
 }

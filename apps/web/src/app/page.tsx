@@ -11,6 +11,8 @@ import { EmptyState } from '@/components/ui/EmptyState';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { HomeSectionHeader } from '@/components/home/HomeSectionHeader';
 import { HomeCategoryStrip } from '@/components/home/HomeCategoryStrip';
+import { DishCategoryPills } from '@/components/home/DishCategoryPills';
+import { DishCategorySheet } from '@/components/home/DishCategorySheet';
 import { UberEatsPill } from '@/components/ui/UberEatsPill';
 import { HorizontalRestaurantSection } from '@/components/shared/HorizontalRestaurantSection';
 import {
@@ -19,6 +21,7 @@ import {
   NearbyDishesSection,
 } from '@/components/DishDiscoveryRailSection';
 import { useIntersectionLoadMore } from '@/hooks/useIntersectionLoadMore';
+import { useDishFavourites } from '@/hooks/useDishFavourites';
 import { getLocationLabel } from '@/lib/getLocationLabel';
 import {
   parseCategoriesQueryParam,
@@ -49,8 +52,9 @@ const RAIL_PAGE_SIZE = 16;
 
 const SECTION_MB = 'mb-6';
 const GAP_EL = 'gap-2';
-/** Matches All Restaurants grid + skeleton grid (no layout shift). */
-const ALL_RESTAURANTS_GRID = `grid grid-cols-1 items-stretch sm:grid-cols-2 sm:gap-3 lg:grid-cols-3 xl:grid-cols-4 ${GAP_EL}`;
+/** Denser grid + compact cards so tiles don’t dominate wide viewports. */
+const ALL_RESTAURANTS_GRID =
+  'grid grid-cols-1 gap-2 items-stretch sm:grid-cols-2 sm:gap-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6';
 
 type HomeSortMode = 'default' | 'popular' | 'top_rated' | 'trending' | 'distance';
 
@@ -120,8 +124,6 @@ export default function HomePage() {
 
   const [districts, setDistricts] = useState<District[]>([]);
   const [selectedDistricts, setSelectedDistricts] = useState<string[]>([]);
-  /** When off, district list is cleared; when on, the dropdown is shown. */
-  const [districtFilterEnabled, setDistrictFilterEnabled] = useState(false);
   /** Single geolocation read on load — same coords for bias (default sorts) and strict Nearby. */
   const [userLocation, setUserLocation] = useState<UserLocationState>({ status: 'unknown' });
   const [locationError, setLocationError] = useState<string | null>(null);
@@ -132,11 +134,15 @@ export default function HomePage() {
 
   const [selectedSort, setSelectedSort] = useState<HomeSortMode>('default');
   const [filterHighRating, setFilterHighRating] = useState(false);
-  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [cuisineMenuOpen, setCuisineMenuOpen] = useState(false);
+  const [districtMenuOpen, setDistrictMenuOpen] = useState(false);
   const [categoryPopupOpen, setCategoryPopupOpen] = useState(false);
+  const [selectedDishCategory, setSelectedDishCategory] = useState<string | null>(null);
 
   const sentinelRef = useRef<HTMLDivElement | null>(null);
   const loadMoreRef = useRef<() => void>(() => {});
+  const cuisineFilterWrapRef = useRef<HTMLDivElement | null>(null);
+  const districtFilterWrapRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     setHasToken(!!getAdminToken());
@@ -158,31 +164,23 @@ export default function HomePage() {
     [userLocation, nearbySortActive],
   );
 
-  /** District + geo — identical for restaurant rails and dish rails. */
+  /** District + geo for restaurant list, rails, and grid (respects Nearby sort strict radius). */
   const homeSharedQuery = useMemo(
     () => mergeDistrictAndGeo(selectedDistricts, geoForApi),
     [selectedDistricts, geoForApi],
   );
 
-  /**
-   * Dish discovery rails: same geo/district as restaurants, plus venue-tag filter when selected
-   * so popular/trending dishes align with honest “at tagged restaurants” intent.
-   */
-  const homeDishDiscoveryQuery = useMemo((): Record<string, string | number> => {
-    const q: Record<string, string | number> = { ...homeSharedQuery };
-    if (selectedCategories.length > 0) {
-      q.cuisine = selectedCategories.join(',');
-    }
-    return q;
-  }, [homeSharedQuery, selectedCategories]);
+  /** Dish rails at top: bias geo only. No restaurant-bar cuisine or district. */
+  const dishRailGeoForApi = useMemo(
+    () => buildHomeGeoQuery(userLocation, false, DEFAULT_RADIUS_KM),
+    [userLocation],
+  );
 
-  const dishRailContextSubtitle =
-    selectedCategories.length > 0
-      ? `Menu items from venues tagged: ${selectedCategories.join(', ')}`
-      : null;
+  const homeDishDiscoveryQuery = dishRailGeoForApi;
 
   /**
-   * Category dish rail: strict 5 km when coords are trusted; otherwise district / island-wide + cuisine only.
+   * “See dishes” modal rail: strict 5 km when coords are trusted; otherwise cuisine-only / geo bias.
+   * Restaurant-bar district does not apply to dish APIs.
    */
   const categoryNearbyDishesQuery = useMemo((): Record<string, string | number> => {
     const geoSlice: Record<string, string | number> =
@@ -194,10 +192,10 @@ export default function HomePage() {
           }
         : {};
     return {
-      ...mergeDistrictAndGeo(selectedDistricts, geoSlice),
+      ...geoSlice,
       cuisine: selectedCategories.join(','),
     };
-  }, [userLocation, selectedDistricts, selectedCategories]);
+  }, [userLocation, selectedCategories]);
 
   /** All Restaurants grid (adds search, categories, sort). */
   const buildFeedParams = useCallback(() => {
@@ -219,10 +217,12 @@ export default function HomePage() {
     return params;
   }, [homeSharedQuery, urlQuery, selectedCategories, selectedSort, userLocation.status]);
 
-  /** Restaurant discovery rails: same shared query + pagination (sort per request). */
+  /** Restaurant discovery rails: shared geo/district + cuisine + pagination (sort per request). */
   const buildRailParams = useCallback((): Record<string, string | number> => {
-    return { page: 1, limit: RAIL_PAGE_SIZE, ...homeSharedQuery };
-  }, [homeSharedQuery]);
+    const base: Record<string, string | number> = { page: 1, limit: RAIL_PAGE_SIZE, ...homeSharedQuery };
+    if (selectedCategories.length > 0) base.cuisine = selectedCategories.join(',');
+    return base;
+  }, [homeSharedQuery, selectedCategories]);
 
   const loadRails = useCallback(async () => {
     setRailsLoading(true);
@@ -314,7 +314,7 @@ export default function HomePage() {
     locationReady,
   ]);
 
-  /** Dev-only: one log line per request surface (verify list === rails base === dishes geo). */
+  /** Dev-only: one log line per request surface (restaurant list vs rails vs dish rails geo). */
   useEffect(() => {
     if (process.env.NODE_ENV !== 'development') return;
     if (typeof window === 'undefined') return;
@@ -324,8 +324,8 @@ export default function HomePage() {
     const railPopular = buildApiUrl('/restaurants', { ...base, sort: 'popular' });
     const railTop = buildApiUrl('/restaurants', { ...base, sort: 'top_rated' });
     const railTrend = buildApiUrl('/restaurants', { ...base, sort: 'trending' });
-    const dishFeatured = buildApiUrl('/dishes/featured', homeSharedQuery);
-    const dishTrending = buildApiUrl('/dishes/trending', homeSharedQuery);
+    const dishFeatured = buildApiUrl('/dishes/featured', homeDishDiscoveryQuery);
+    const dishTrending = buildApiUrl('/dishes/trending', homeDishDiscoveryQuery);
     // eslint-disable-next-line no-console -- temporary homepage geo diagnostics
     console.log('[home location requests]', {
       userLocation,
@@ -333,6 +333,7 @@ export default function HomePage() {
       strictNearbyReady,
       geoForApi,
       homeSharedQuery,
+      homeDishDiscoveryQuery,
       allRestaurantsUrl: listUrl,
       restaurantRailPopularUrl: railPopular,
       restaurantRailTopRatedUrl: railTop,
@@ -346,6 +347,7 @@ export default function HomePage() {
     strictNearbyReady,
     geoForApi,
     homeSharedQuery,
+    homeDishDiscoveryQuery,
     buildRailParams,
     buildFeedParams,
   ]);
@@ -428,6 +430,16 @@ export default function HomePage() {
       .catch(() => {});
   }, [hasToken]);
 
+  const dishFavourites = useDishFavourites(hasToken);
+  const dishFavouritesRail = useMemo(
+    () => ({
+      isFavourited: dishFavourites.isFavourited,
+      onToggle: dishFavourites.toggle,
+      loadingId: dishFavourites.loadingDishId,
+    }),
+    [dishFavourites.isFavourited, dishFavourites.toggle, dishFavourites.loadingDishId],
+  );
+
   const handleToggleFavourite = (restaurant: Restaurant) => {
     if (!hasToken || favouriteLoadingId != null) return;
     const isFav = favouriteIds.has(restaurant.id);
@@ -448,11 +460,6 @@ export default function HomePage() {
         .finally(() => setFavouriteLoadingId(null));
     }
   };
-
-  const setDistrictFilterOn = useCallback((on: boolean) => {
-    setDistrictFilterEnabled(on);
-    if (!on) setSelectedDistricts([]);
-  }, []);
 
   const onDistrictSelectChange = useCallback((value: string) => {
     setSelectedDistricts(value ? [value] : []);
@@ -571,13 +578,7 @@ export default function HomePage() {
   }, [router, searchParams]);
 
   const removeDistrict = useCallback((name: string) => {
-    setSelectedDistricts((prev) => {
-      const next = prev.filter((d) => d !== name);
-      if (next.length === 0) {
-        queueMicrotask(() => setDistrictFilterEnabled(false));
-      }
-      return next;
-    });
+    setSelectedDistricts((prev) => prev.filter((d) => d !== name));
   }, []);
 
   const sortSummaryLabel =
@@ -588,7 +589,7 @@ export default function HomePage() {
         : selectedSort === 'trending'
           ? 'Trending'
           : selectedSort === 'distance'
-            ? 'Nearby'
+            ? 'Near me'
             : null;
 
   const activeFilterCount =
@@ -598,13 +599,6 @@ export default function HomePage() {
     (filterHighRating ? 1 : 0);
 
   const hasActiveFilterSummary =
-    selectedCategories.length > 0 ||
-    selectedSort !== 'default' ||
-    urlQuery.trim().length > 0 ||
-    selectedDistricts.length > 0 ||
-    filterHighRating;
-
-  const softenDiscoveryRails =
     selectedCategories.length > 0 ||
     selectedSort !== 'default' ||
     urlQuery.trim().length > 0 ||
@@ -621,7 +615,7 @@ export default function HomePage() {
 
   const railLocationLabel = useMemo(() => {
     if (strictNearbyReady) {
-      return `📍 Nearby · ${DEFAULT_RADIUS_KM} km (strict)`;
+      return `📍 Near me · ${DEFAULT_RADIUS_KM} km`;
     }
     if (userLocation.status === 'granted') {
       if (selectedDistricts.length > 0) {
@@ -634,6 +628,14 @@ export default function HomePage() {
     return getLocationLabel(null, selectedDistricts);
   }, [strictNearbyReady, userLocation, selectedDistricts]);
 
+  /** Dish rails: location line ignores restaurant district / “Near me” strict sort. */
+  const dishRailLocationLabel = useMemo(() => {
+    if (userLocation.status === 'granted') {
+      return '📍 Using your location';
+    }
+    return getLocationLabel(null, []);
+  }, [userLocation]);
+
   const emptyDescription =
     filterHighRating
       ? 'No restaurants match your ⭐ 4.5+ filter. Try clearing filters or adjusting search/sort.'
@@ -645,10 +647,12 @@ export default function HomePage() {
 
   const clearAllFeedFilters = () => {
     setCategoryPopupOpen(false);
+    setCuisineMenuOpen(false);
+    setDistrictMenuOpen(false);
     setSelectedSort('default');
     setSelectedDistricts([]);
-    setDistrictFilterEnabled(false);
     setFilterHighRating(false);
+    setSelectedDishCategory(null);
     const params = new URLSearchParams(searchParams?.toString() ?? '');
     params.delete('categories');
     params.delete('q');
@@ -665,181 +669,36 @@ export default function HomePage() {
     };
   }, [categoryPopupOpen]);
 
+  useEffect(() => {
+    if (!cuisineMenuOpen && !districtMenuOpen) return;
+    const onPointerDown = (e: PointerEvent) => {
+      const t = e.target as Node;
+      if (cuisineFilterWrapRef.current?.contains(t)) return;
+      if (districtFilterWrapRef.current?.contains(t)) return;
+      setCuisineMenuOpen(false);
+      setDistrictMenuOpen(false);
+    };
+    document.addEventListener('pointerdown', onPointerDown);
+    return () => document.removeEventListener('pointerdown', onPointerDown);
+  }, [cuisineMenuOpen, districtMenuOpen]);
+
+  const cuisinePillActive = selectedCategories.length > 0;
+  const cuisinePillLabel =
+    selectedCategories.length === 0
+      ? 'Cuisine ▾'
+      : selectedCategories.length === 1
+        ? `${selectedCategories[0]} ▾`
+        : `Cuisine (${selectedCategories.length}) ▾`;
+  const districtPillActive = selectedDistricts.length > 0;
+  const districtPillLabel =
+    selectedDistricts.length === 0 ? 'District ▾' : `${selectedDistricts[0]} ▾`;
+
   return (
-    <main className="mx-auto max-w-screen-xl px-4 py-4 pb-[max(1rem,env(safe-area-inset-bottom,0px))] sm:px-6 sm:py-6 sm:pb-6">
-      <section className="mb-4 flex items-center gap-3">
-        <button
-          type="button"
-          onClick={() => setFiltersOpen((o) => !o)}
-          className="inline-flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-primary)]"
-          style={{
-            borderColor: filtersOpen || activeFilterCount > 0 ? 'var(--accent-primary)' : 'var(--border)',
-            backgroundColor:
-              filtersOpen || activeFilterCount > 0
-                ? 'color-mix(in srgb, var(--accent-primary) 10%, var(--surface))'
-                : 'var(--surface)',
-            color: 'var(--text-primary)',
-          }}
-          aria-expanded={filtersOpen}
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
-            <line x1="4" y1="6" x2="20" y2="6" />
-            <line x1="8" y1="12" x2="16" y2="12" />
-            <line x1="11" y1="18" x2="13" y2="18" />
-          </svg>
-          Filters
-          {activeFilterCount > 0 && (
-            <span
-              className="inline-flex h-5 min-w-[20px] items-center justify-center rounded-full px-1 text-xs font-semibold"
-              style={{ backgroundColor: 'var(--accent-primary)', color: '#fff' }}
-            >
-              {activeFilterCount}
-            </span>
-          )}
-        </button>
-        {activeFilterCount > 0 && (
-          <button
-            type="button"
-            onClick={clearAllFeedFilters}
-            className="text-xs font-medium transition-opacity hover:opacity-70"
-            style={{ color: 'var(--accent-primary)' }}
-          >
-            Clear all
-          </button>
-        )}
-      </section>
-
-      {filtersOpen && (
-        <div
-          className={`rounded-xl border px-3 py-3 ${SECTION_MB}`}
-          style={{ borderColor: 'var(--border)', backgroundColor: 'var(--surface)' }}
-        >
-          <div>
-            <div className="pb-3">
-              <p className="mb-1.5 text-[11px] font-medium leading-tight" style={{ color: 'var(--text-secondary)' }}>
-                Sort by
-              </p>
-              <div className="flex flex-wrap gap-2">
-                <UberEatsPill label="Popular" selected={selectedSort === 'popular'} onClick={onSortPopular} />
-                <UberEatsPill label="Top Rated" selected={selectedSort === 'top_rated'} onClick={onSortTopRated} />
-                <UberEatsPill label="Trending" selected={selectedSort === 'trending'} onClick={onSortTrending} />
-                <UberEatsPill
-                  label="Nearby (strict)"
-                  selected={selectedSort === 'distance'}
-                  onClick={onSortNearby}
-                  disabled={userLocation.status === 'unknown'}
-                />
-              </div>
-              {locationError && (
-                <p
-                  className="mt-2 rounded-md border px-3 py-2 text-sm"
-                  role="alert"
-                  style={{
-                    borderColor: 'color-mix(in srgb, var(--border) 80%, transparent)',
-                    color: 'var(--text-primary)',
-                  }}
-                >
-                  {locationError}
-                </p>
-              )}
-              {strictNearbyReady && (
-                <p className="mt-1.5 text-[11px] leading-snug" style={{ color: 'var(--text-secondary)' }}>
-                  Strict mode: within {DEFAULT_RADIUS_KM} km of your position.
-                </p>
-              )}
-            </div>
-
-            <div
-              className="border-t pt-3"
-              style={{ borderColor: 'color-mix(in srgb, var(--border) 55%, transparent)' }}
-            >
-              <p className="mb-0.5 text-[11px] font-medium leading-tight" style={{ color: 'var(--text-secondary)' }}>
-                Restaurant cuisine
-              </p>
-              <p className="mb-1.5 text-[11px] leading-snug opacity-90" style={{ color: 'var(--text-secondary)' }}>
-                Tags describe venues. Dish rails use the same tags to narrow which restaurants&apos; menus appear — not
-                standalone dish categories.
-              </p>
-              <HomeCategoryStrip selected={selectedCategories} onToggle={toggleCategory} />
-              {selectedCategories.length > 0 && (
-                <button
-                  type="button"
-                  onClick={() => setCategoryPopupOpen(true)}
-                  className="mt-2 w-full rounded-lg border px-3 py-2.5 text-left text-sm font-medium transition-opacity hover:opacity-90 active:opacity-85 sm:w-auto sm:min-w-[min(100%,280px)]"
-                  style={{
-                    borderColor: 'color-mix(in srgb, var(--border) 80%, transparent)',
-                    backgroundColor: 'var(--background)',
-                    color: 'var(--text-primary)',
-                  }}
-                >
-                  <span className="block text-[11px] font-normal opacity-80" style={{ color: 'var(--text-secondary)' }}>
-                    Dish + venue overview
-                  </span>
-                  <span className="mt-0.5 block">See matching dishes &amp; sample restaurants</span>
-                </button>
-              )}
-            </div>
-
-            <div
-              className="border-t pt-3"
-              style={{ borderColor: 'color-mix(in srgb, var(--border) 55%, transparent)' }}
-            >
-              <p className="mb-1.5 text-[11px] font-medium leading-tight" style={{ color: 'var(--text-secondary)' }}>
-                District
-              </p>
-              <div className="flex items-center gap-3">
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={districtFilterEnabled}
-                  onClick={() => setDistrictFilterOn(!districtFilterEnabled)}
-                  className="flex shrink-0 items-center gap-2 rounded-full border px-3 py-1.5 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-primary)]"
-                  style={{
-                    borderColor: districtFilterEnabled ? 'var(--accent-primary)' : 'var(--border)',
-                    backgroundColor: districtFilterEnabled
-                      ? 'color-mix(in srgb, var(--accent-primary) 12%, transparent)'
-                      : 'var(--background)',
-                    color: 'var(--text-primary)',
-                  }}
-                >
-                  <span
-                    className="relative inline-flex h-4 w-7 shrink-0 rounded-full transition-colors"
-                    style={{ backgroundColor: districtFilterEnabled ? 'var(--accent-primary)' : 'var(--border)' }}
-                    aria-hidden
-                  >
-                    <span
-                      className="absolute top-0.5 h-3 w-3 rounded-full bg-white shadow transition-transform duration-200"
-                      style={{ left: districtFilterEnabled ? 'calc(100% - 0.875rem)' : '0.125rem' }}
-                    />
-                  </span>
-                  <span className="whitespace-nowrap">Filter by district</span>
-                </button>
-                {districtFilterEnabled && (
-                  <select
-                    id="home-district-select"
-                    className="min-h-[36px] min-w-0 flex-1 rounded-lg border px-2.5 py-1.5 text-sm font-medium outline-none transition-colors focus-visible:ring-2 focus-visible:ring-[var(--accent-primary)] sm:max-w-xs"
-                    style={{
-                      borderColor: 'var(--border)',
-                      backgroundColor: 'var(--background)',
-                      color: 'var(--text-primary)',
-                    }}
-                    value={selectedDistricts[0] ?? ''}
-                    onChange={(e) => onDistrictSelectChange(e.target.value)}
-                    aria-label="District"
-                  >
-                    <option value="">All districts</option>
-                    {districts.map((d) => (
-                      <option key={d.id} value={d.name}>
-                        {d.name}
-                      </option>
-                    ))}
-                  </select>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+    <>
+    <main className="mx-auto w-full max-w-none px-4 pt-2 pb-[max(1rem,env(safe-area-inset-bottom,0px))] sm:px-6 sm:pt-3 sm:pb-6 lg:px-8 xl:px-10">
+      <div className="mb-4 sm:mb-5">
+        <DishCategoryPills selected={selectedDishCategory} onSelect={setSelectedDishCategory} />
+      </div>
 
       {fetchError && (
         <div className={SECTION_MB}>
@@ -858,7 +717,7 @@ export default function HomePage() {
           <div
             role="dialog"
             aria-modal="true"
-            aria-label="Dish and venue overview"
+            aria-label="See dishes"
             className="relative z-[1] mx-auto flex max-h-[min(92dvh,calc(100dvh-1.5rem))] w-full max-w-screen-xl flex-col rounded-t-2xl border border-b-0 shadow-lg sm:max-h-[min(88vh,840px)] sm:rounded-2xl sm:border-b"
             style={{
               borderColor: 'var(--border)',
@@ -870,15 +729,11 @@ export default function HomePage() {
               <div className="mx-auto mb-3 h-1 w-11 shrink-0 rounded-full sm:hidden" style={{ backgroundColor: 'var(--border)' }} aria-hidden />
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0 flex-1">
-                  <p className="text-[11px] font-medium" style={{ color: 'var(--text-secondary)' }}>
-                    Overview · venue tags
-                  </p>
-                  <h2 className="mt-0.5 text-base font-semibold leading-snug sm:text-lg" style={{ color: 'var(--text-primary)' }}>
-                    Dishes near you, then sample restaurants
+                  <h2 className="text-base font-semibold leading-snug sm:text-lg" style={{ color: 'var(--text-primary)' }}>
+                    Dishes near you
                   </h2>
                   <p className="mt-1 text-sm leading-snug" style={{ color: 'var(--text-secondary)' }}>
-                    Tags: {selectedCategories.join(', ')} — dishes are menu items; tags describe where they&apos;re
-                    served.
+                    {selectedCategories.join(', ')}
                   </p>
                 </div>
                 <button
@@ -901,19 +756,20 @@ export default function HomePage() {
                   apiQuery={categoryNearbyDishesQuery}
                   locationLabel={railLocationLabel}
                   onSeeAll={scrollToAllRestaurants}
+                  dishFavourites={dishFavouritesRail}
                 />
               </section>
 
               <section>
                 <HomeSectionHeader
                   title="Sample restaurants"
-                  subtitle="Venues whose tags overlap your selection (full list below)"
+                  subtitle="Places that match your selection (full list below)"
                 />
                 {feedLoading ? (
                   <ul className={ALL_RESTAURANTS_GRID}>
                     {Array.from({ length: 4 }).map((_, i) => (
                       <li key={`popup-restaurant-skeleton-${i}`} className="flex min-h-0">
-                        <SkeletonCard variant="grid" className="w-full" />
+                        <SkeletonCard variant="compact" className="w-full" />
                       </li>
                     ))}
                   </ul>
@@ -923,6 +779,7 @@ export default function HomePage() {
                       {popupRestaurants.map((r) => (
                         <li key={`popup-restaurant-${r.id}`} className="flex min-h-0">
                           <RestaurantCard
+                            variant="compact"
                             restaurant={r}
                             isFavorite={hasToken && favouriteIds.has(r.id)}
                             favoriteLoading={favouriteLoadingId === r.id}
@@ -960,23 +817,189 @@ export default function HomePage() {
         <PopularDishesSection
           locationReady={locationReady}
           apiQuery={homeDishDiscoveryQuery}
-          locationLabel={railLocationLabel}
-          sectionSubtitle={dishRailContextSubtitle}
+          locationLabel={dishRailLocationLabel}
+          sectionSubtitle={null}
           onSeeAll={scrollToAllRestaurants}
+          dishFavourites={dishFavouritesRail}
         />
         <TrendingDishesSection
           locationReady={locationReady}
           apiQuery={homeDishDiscoveryQuery}
-          locationLabel={railLocationLabel}
-          sectionSubtitle={dishRailContextSubtitle}
+          locationLabel={dishRailLocationLabel}
+          sectionSubtitle={null}
           onSeeAll={scrollToAllRestaurants}
+          dishFavourites={dishFavouritesRail}
         />
       </section>
 
       <section
-        className={`${SECTION_MB} space-y-6 border-t pt-6 transition-opacity duration-300 ease-out ${
-          softenDiscoveryRails ? 'opacity-[0.72]' : 'opacity-100'
-        }`}
+        className={`${SECTION_MB} border-t pt-6`}
+        style={{ borderColor: 'color-mix(in srgb, var(--border) 55%, transparent)' }}
+      >
+        <p className="mb-2 text-[11px] font-semibold uppercase tracking-wide" style={{ color: 'var(--text-secondary)' }}>
+          Restaurants
+        </p>
+        <div className="hide-scrollbar flex flex-nowrap items-center gap-2 overflow-x-auto pb-1 [-webkit-overflow-scrolling:touch]">
+          <UberEatsPill label="Near me" selected={selectedSort === 'distance'} onClick={onSortNearby} disabled={userLocation.status === 'unknown'} />
+          <UberEatsPill label="Popular" selected={selectedSort === 'popular'} onClick={onSortPopular} />
+          <UberEatsPill label="Top Rated" selected={selectedSort === 'top_rated'} onClick={onSortTopRated} />
+          <UberEatsPill label="Trending" selected={selectedSort === 'trending'} onClick={onSortTrending} />
+          <UberEatsPill label="⭐ 4.5+" selected={filterHighRating} onClick={() => setFilterHighRating((v) => !v)} />
+
+          <div ref={cuisineFilterWrapRef} className="relative shrink-0">
+            <button
+              type="button"
+              aria-expanded={cuisineMenuOpen}
+              aria-haspopup="listbox"
+              onClick={() => {
+                setCuisineMenuOpen((o) => !o);
+                setDistrictMenuOpen(false);
+              }}
+              className="shrink-0 rounded-full border border-solid px-4 py-2 text-sm font-medium whitespace-nowrap transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-primary)] enabled:hover:opacity-90 enabled:active:opacity-80"
+              style={
+                cuisinePillActive
+                  ? {
+                      backgroundColor: 'var(--accent-primary)',
+                      color: '#ffffff',
+                      borderColor: 'var(--accent-primary)',
+                    }
+                  : {
+                      backgroundColor: 'var(--surface)',
+                      borderColor: 'var(--border)',
+                      color: 'var(--text-primary)',
+                    }
+              }
+            >
+              {cuisinePillLabel}
+            </button>
+            {cuisineMenuOpen && (
+              <div
+                className="absolute left-0 top-full z-[60] mt-1 max-h-[200px] min-w-[min(18rem,calc(100vw-2rem))] max-w-[min(100%,24rem)] overflow-y-auto overflow-x-hidden rounded-xl border px-2 py-2"
+                style={{
+                  backgroundColor: 'var(--surface)',
+                  borderColor: 'var(--border)',
+                  borderRadius: '0.75rem',
+                  boxShadow: '0 4px 16px rgba(0,0,0,0.1)',
+                }}
+              >
+                <HomeCategoryStrip selected={selectedCategories} onToggle={toggleCategory} />
+                {selectedCategories.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCategoryPopupOpen(true);
+                      setCuisineMenuOpen(false);
+                    }}
+                    className="mt-2 w-full rounded-lg border px-3 py-2 text-left text-sm font-medium transition-opacity hover:opacity-90 active:opacity-85"
+                    style={{
+                      borderColor: 'color-mix(in srgb, var(--border) 80%, transparent)',
+                      backgroundColor: 'var(--background)',
+                      color: 'var(--text-primary)',
+                    }}
+                  >
+                    <span className="block text-[11px] font-normal opacity-80" style={{ color: 'var(--text-secondary)' }}>
+                      See dishes
+                    </span>
+                    <span className="mt-0.5 block text-xs">See matching dishes &amp; sample restaurants</span>
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+
+          <div ref={districtFilterWrapRef} className="relative shrink-0">
+            <button
+              type="button"
+              aria-expanded={districtMenuOpen}
+              aria-haspopup="listbox"
+              onClick={() => {
+                setDistrictMenuOpen((o) => !o);
+                setCuisineMenuOpen(false);
+              }}
+              className="shrink-0 rounded-full border border-solid px-4 py-2 text-sm font-medium whitespace-nowrap transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-primary)] enabled:hover:opacity-90 enabled:active:opacity-80"
+              style={
+                districtPillActive
+                  ? {
+                      backgroundColor: 'var(--accent-primary)',
+                      color: '#ffffff',
+                      borderColor: 'var(--accent-primary)',
+                    }
+                  : {
+                      backgroundColor: 'var(--surface)',
+                      borderColor: 'var(--border)',
+                      color: 'var(--text-primary)',
+                    }
+              }
+            >
+              {districtPillLabel}
+            </button>
+            {districtMenuOpen && (
+              <div
+                className="absolute left-0 top-full z-[60] mt-1 min-w-[min(16rem,calc(100vw-2rem))] rounded-xl border p-2"
+                style={{
+                  backgroundColor: 'var(--surface)',
+                  borderColor: 'var(--border)',
+                  borderRadius: '0.75rem',
+                  boxShadow: '0 4px 16px rgba(0,0,0,0.1)',
+                }}
+              >
+                <label htmlFor="home-district-select" className="sr-only">
+                  District
+                </label>
+                <select
+                  id="home-district-select"
+                  className="min-h-[44px] w-full rounded-lg border px-2.5 py-2 text-sm font-medium outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-primary)]"
+                  style={{
+                    borderColor: 'var(--border)',
+                    backgroundColor: 'var(--background)',
+                    color: 'var(--text-primary)',
+                  }}
+                  value={selectedDistricts[0] ?? ''}
+                  onChange={(e) => onDistrictSelectChange(e.target.value)}
+                >
+                  <option value="">All districts</option>
+                  {districts.map((d) => (
+                    <option key={d.id} value={d.name}>
+                      {d.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+          </div>
+
+          {activeFilterCount > 0 && (
+            <button
+              type="button"
+              onClick={clearAllFeedFilters}
+              className="text-xs font-medium transition-opacity hover:opacity-70"
+              style={{ color: 'var(--accent-primary)' }}
+            >
+              Clear all
+            </button>
+          )}
+        </div>
+        {locationError && (
+          <p
+            className="mt-2 rounded-md border px-3 py-2 text-sm"
+            role="alert"
+            style={{
+              borderColor: 'color-mix(in srgb, var(--border) 80%, transparent)',
+              color: 'var(--text-primary)',
+            }}
+          >
+            {locationError}
+          </p>
+        )}
+        {strictNearbyReady && (
+          <p className="mt-1.5 text-[11px] leading-snug" style={{ color: 'var(--text-secondary)' }}>
+            Showing restaurants within {DEFAULT_RADIUS_KM} km of you
+          </p>
+        )}
+      </section>
+
+      <section
+        className={`${SECTION_MB} space-y-6 border-t pt-6`}
         style={{ borderColor: 'color-mix(in srgb, var(--border) 55%, transparent)' }}
       >
         <HorizontalRestaurantSection
@@ -1006,7 +1029,7 @@ export default function HomePage() {
           onFavoriteClick={handleToggleFavourite}
         />
         <HorizontalRestaurantSection
-          title="📈 Trending"
+          title="⚡ Trending"
           subtitle="Trending near you"
           locationLabel={railLocationLabel}
           restaurants={trendingRail}
@@ -1141,7 +1164,7 @@ export default function HomePage() {
                     color: 'var(--accent-primary)',
                   }}
                 >
-                  Dish overview
+                  See dishes
                 </button>
               )}
               <button
@@ -1158,25 +1181,9 @@ export default function HomePage() {
 
         <HomeSectionHeader
           title="All Restaurants"
-          subtitle="Full directory"
+          subtitle="Explore menus"
           onSeeAll={scrollToAllRestaurants}
-          rightSlot={
-            !feedLoading && gridTotal > 0 ? (
-              <p className="text-sm font-medium" style={{ color: 'var(--text-secondary)' }}>
-                {gridTotal} {gridTotal === 1 ? 'place' : 'places'}
-                {hasMore ? ' · Scroll for more' : ''}
-              </p>
-            ) : null
-          }
         />
-
-        <div className={`mb-4 flex flex-wrap items-center ${GAP_EL}`}>
-          <UberEatsPill
-            label="⭐ 4.5+"
-            selected={filterHighRating}
-            onClick={() => setFilterHighRating((v) => !v)}
-          />
-        </div>
 
         <div className="relative">
           {/* Initial feed load — crossfade out when data arrives */}
@@ -1191,7 +1198,7 @@ export default function HomePage() {
             <ul className={ALL_RESTAURANTS_GRID}>
               {Array.from({ length: GRID_PAGE_SIZE }).map((_, i) => (
                 <li key={i} className="flex min-h-0">
-                  <SkeletonCard variant="grid" className="w-full" />
+                  <SkeletonCard variant="compact" className="w-full" />
                 </li>
               ))}
             </ul>
@@ -1245,6 +1252,7 @@ export default function HomePage() {
                   {displayRestaurants.map((r) => (
                     <li key={r.id} className="flex min-h-0">
                       <RestaurantCard
+                        variant="compact"
                         restaurant={r}
                         isFavorite={hasToken && favouriteIds.has(r.id)}
                         favoriteLoading={favouriteLoadingId === r.id}
@@ -1264,7 +1272,7 @@ export default function HomePage() {
                   >
                     {Array.from({ length: 3 }).map((_, i) => (
                       <div key={`more-${i}`} className="flex min-h-0">
-                        <SkeletonCard variant="grid" className="w-full lm-fade-in" />
+                        <SkeletonCard variant="compact" className="w-full lm-fade-in" />
                       </div>
                     ))}
                   </div>
@@ -1284,5 +1292,13 @@ export default function HomePage() {
         </div>
       </section>
     </main>
+    <DishCategorySheet
+      category={selectedDishCategory}
+      onClose={() => setSelectedDishCategory(null)}
+      userLocation={userLocation}
+      selectedDistricts={selectedDistricts}
+      dishFavourites={dishFavouritesRail}
+    />
+    </>
   );
 }

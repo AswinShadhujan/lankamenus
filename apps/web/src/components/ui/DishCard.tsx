@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { MenuItemCardThumbnail } from '@/components/restaurant/MenuItemCardThumbnail';
+import { DishFavoriteButton } from '@/components/ui/DishFavoriteButton';
 
 type DishCardProps = {
   name: string;
@@ -13,6 +14,12 @@ type DishCardProps = {
   restaurantId: string;
   menuId: string;
   itemId: string;
+  /** Favourite control on the thumbnail (from page-level `useDishFavourites`). */
+  favourite?: {
+    isFavourited: boolean;
+    loading: boolean;
+    onToggle: () => void;
+  } | null;
 };
 
 function formatPrice(price: number | string | null | undefined): string | null {
@@ -29,6 +36,7 @@ export function DishCard({
   veg,
   imageUrl,
   href,
+  favourite = null,
 }: DishCardProps) {
   const priceStr = formatPrice(price);
 
@@ -37,7 +45,30 @@ export function DishCard({
       className="flex items-start justify-between gap-4 rounded-lg border p-4 transition-colors duration-200 hover:bg-[var(--surface)]"
       style={{ borderColor: 'var(--border)', backgroundColor: 'var(--background)' }}
     >
-      <MenuItemCardThumbnail url={imageUrl} alt={name} size="compact" />
+      <div className="relative shrink-0">
+        <MenuItemCardThumbnail url={imageUrl} alt={name} size="compact" />
+        {favourite ? (
+          <div
+            className="absolute -right-1 -top-1 z-[2]"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
+            onKeyDown={(e) => e.key === 'Enter' && e.preventDefault()}
+            role="presentation"
+          >
+            <DishFavoriteButton
+              isFavourited={favourite.isFavourited}
+              loading={favourite.loading}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                void favourite.onToggle();
+              }}
+            />
+          </div>
+        ) : null}
+      </div>
       <div className="min-w-0 flex-1">
         <Link href={href} className="block">
           <span className="text-body font-medium" style={{ color: 'var(--text-primary)' }}>

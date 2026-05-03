@@ -2,10 +2,12 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { UnauthorizedException, NotFoundException } from '@nestjs/common';
 import { FavouritesController } from './favourites.controller';
 import { FavouritesService } from './favourites.service';
+import { DishFavouritesService } from './dish-favourites.service';
 
 describe('FavouritesController', () => {
   let controller: FavouritesController;
   let service: FavouritesService;
+  let dishFavouritesService: DishFavouritesService;
 
   const mockRestaurant = {
     id: 1,
@@ -28,13 +30,24 @@ describe('FavouritesController', () => {
       remove: jest.fn().mockResolvedValue(undefined),
     };
 
+    const mockDishFavouritesService = {
+      findAllByUserId: jest.fn().mockResolvedValue([]),
+      findDishIdsByUserId: jest.fn().mockResolvedValue([]),
+      add: jest.fn().mockResolvedValue(undefined),
+      remove: jest.fn().mockResolvedValue(undefined),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       controllers: [FavouritesController],
-      providers: [{ provide: FavouritesService, useValue: mockFavouritesService }],
+      providers: [
+        { provide: FavouritesService, useValue: mockFavouritesService },
+        { provide: DishFavouritesService, useValue: mockDishFavouritesService },
+      ],
     }).compile();
 
     controller = module.get<FavouritesController>(FavouritesController);
     service = module.get<FavouritesService>(FavouritesService);
+    dishFavouritesService = module.get<DishFavouritesService>(DishFavouritesService);
   });
 
   it('should be defined', () => {
@@ -91,6 +104,54 @@ describe('FavouritesController', () => {
       const req = { user: undefined };
       await expect(controller.remove(req, 1)).rejects.toThrow(UnauthorizedException);
       expect(service.remove).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('GET /users/me/favourites/dishes/ids', () => {
+    it('returns { ids }', async () => {
+      jest.spyOn(dishFavouritesService, 'findDishIdsByUserId').mockResolvedValue([1, 2]);
+      const result = await controller.listDishIds({ user: { userId: 1 } });
+      expect(result).toEqual({ ids: [1, 2] });
+    });
+
+    it('throws when unauthenticated', async () => {
+      await expect(controller.listDishIds({ user: {} })).rejects.toThrow(UnauthorizedException);
+    });
+  });
+
+  describe('GET /users/me/favourites/dishes', () => {
+    it('returns { data }', async () => {
+      const dishes = [
+        {
+          id: 1,
+          menu_id: 9,
+          name: 'A',
+          price: 1,
+          currency: 'LKR',
+          image_url: null,
+          restaurant_id: 2,
+          restaurant_name: 'R',
+        },
+      ];
+      jest.spyOn(dishFavouritesService, 'findAllByUserId').mockResolvedValue(dishes);
+      const result = await controller.listDishes({ user: { userId: 1 } });
+      expect(result).toEqual({ data: dishes });
+    });
+  });
+
+  describe('POST /users/me/favourites/dishes/:id', () => {
+    it('returns success and dish_id', async () => {
+      const result = await controller.addDish({ user: { userId: 1 } }, 5);
+      expect(dishFavouritesService.add).toHaveBeenCalledWith(1, 5);
+      expect(result).toEqual({ success: true, dish_id: 5 });
+    });
+  });
+
+  describe('DELETE /users/me/favourites/dishes/:id', () => {
+    it('returns { success: true }', async () => {
+      const result = await controller.removeDish({ user: { userId: 1 } }, 5);
+      expect(dishFavouritesService.remove).toHaveBeenCalledWith(1, 5);
+      expect(result).toEqual({ success: true });
     });
   });
 });

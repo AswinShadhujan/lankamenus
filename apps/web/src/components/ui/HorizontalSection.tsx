@@ -74,7 +74,10 @@ export function HorizontalSection({
           >
             <HorizontalScroll>
               {list.map((r) => (
-                <div key={r.id} className="min-w-[240px] max-w-[280px] flex-shrink-0 snap-start">
+                <div
+                  key={r.id}
+                  className="flex w-[min(326px,calc(100vw-5rem))] shrink-0 snap-start flex-col sm:w-[336px]"
+                >
                   <RestaurantCard
                     variant="rail"
                     restaurant={r}

@@ -38,4 +38,39 @@ export class DishGeoQueryDto {
   @IsString()
   @MaxLength(500)
   cuisine?: string;
+
+  /**
+   * Homepage dish-category pill: expands via `DISH_KEYWORDS` — name-only OR match (see lib/dishKeywords.ts).
+   * Unknown labels fall back to a single search term equal to the raw `category` string.
+   */
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  category?: string;
+
+  /**
+   * Free text: menu item name substring or restaurant cuisine tag (ignored when `category` is set).
+   */
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  q?: string;
+
+  /** Max rows to return from GET /dishes (default 20, max 50). */
+  @IsOptional()
+  @IsString()
+  @MaxLength(10)
+  limit?: string;
+
+  /** SQL OFFSET (default 0, max 500). */
+  @IsOptional()
+  @IsString()
+  @MaxLength(10)
+  offset?: string;
+
+  /** Result ordering: `default` | `popular` | `trending` | `distance` (unknown values → default). */
+  @IsOptional()
+  @IsString()
+  @MaxLength(20)
+  sort?: string;
 }

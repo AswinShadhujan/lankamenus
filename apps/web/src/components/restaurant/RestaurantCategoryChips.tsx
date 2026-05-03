@@ -9,6 +9,8 @@ type Props = {
   showUnknown?: boolean;
   /** Limit number of known chips (e.g. cards); +N suffix when truncated. */
   maxKnown?: number;
+  /** Single row, clip overflow — keeps compact rail cards a uniform height. */
+  nowrap?: boolean;
   className?: string;
   size?: 'sm' | 'md';
 };
@@ -20,6 +22,7 @@ export function RestaurantCategoryChips({
   tags,
   showUnknown = true,
   maxKnown,
+  nowrap = false,
   className = '',
   size = 'md',
 }: Props) {
@@ -48,11 +51,13 @@ export function RestaurantCategoryChips({
       : 'rounded-full px-2.5 py-1 text-xs font-medium sm:text-sm';
 
   return (
-    <div className={`flex flex-wrap gap-1.5 sm:gap-2 ${className}`}>
+    <div
+      className={`flex gap-1.5 sm:gap-2 ${nowrap ? 'min-w-0 flex-nowrap overflow-hidden' : 'flex-wrap'} ${className}`}
+    >
       {known.map((label) => (
         <span
           key={label}
-          className={pill}
+          className={`shrink-0 ${pill}`}
           style={{
             color: 'var(--text-primary)',
             backgroundColor: 'color-mix(in srgb, var(--accent-primary) 12%, transparent)',
@@ -65,7 +70,7 @@ export function RestaurantCategoryChips({
       {unknown.map((label) => (
         <span
           key={`u-${label}`}
-          className={pill}
+          className={`shrink-0 ${pill}`}
           style={{
             color: 'var(--text-secondary)',
             border: '1px solid var(--border)',
@@ -76,7 +81,7 @@ export function RestaurantCategoryChips({
       ))}
       {moreKnown > 0 ? (
         <span
-          className={pill}
+          className={`shrink-0 ${pill}`}
           style={{
             color: 'var(--text-secondary)',
             border: '1px dashed var(--border)',

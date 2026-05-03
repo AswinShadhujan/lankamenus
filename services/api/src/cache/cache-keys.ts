@@ -4,6 +4,7 @@ export type RestaurantsSearchCacheDto = {
   limit?: string;
   pagesize?: string;
   q?: string;
+  dish_category?: string;
   city?: string;
   district?: string;
   cuisine?: string;
@@ -86,6 +87,7 @@ export function buildRestaurantsListCacheKey(
   const pairs: [string, string][] = [
     ['city', dto.city?.trim() ?? ''],
     ['cuisine', normalizeListParam(dto.cuisine)],
+    ['dish_category', dto.dish_category?.trim() ?? ''],
     ['district', dto.district?.trim() ?? ''],
     ['halal', dto.halal ?? ''],
     ['lat', dto.lat?.trim() ?? ''],

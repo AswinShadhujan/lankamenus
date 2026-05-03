@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
-import api from '@/lib/api';
+import api, { getAdminToken } from '@/lib/api';
+import { useDishFavourites } from '@/hooks/useDishFavourites';
 import { resolveDishDisplayImageUrl } from '@/lib/dish-image';
 import { parseIngredientParts } from '@/lib/menu-ingredients';
 import { DishDetail, type Menu, type MenuItem } from '@/types/menu';
@@ -11,6 +12,7 @@ import { RatingBadge } from '@/components/ui/RatingBadge';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { DishCard } from '@/components/ui/DishCard';
+import { DishFavoriteButton } from '@/components/ui/DishFavoriteButton';
 
 function formatPrice(price: number | string | null | undefined): string | null {
   if (price == null) return null;
@@ -31,6 +33,13 @@ export default function DishDetailPage() {
   const [error, setError] = useState<string | null>(null);
   const [imageError, setImageError] = useState(false);
   const [relatedItems, setRelatedItems] = useState<MenuItem[]>([]);
+  const [hasToken, setHasToken] = useState(false);
+
+  useEffect(() => {
+    setHasToken(!!getAdminToken());
+  }, []);
+
+  const dishFavourites = useDishFavourites(hasToken);
 
   useEffect(() => {
     if (!menuId || !itemId) {
@@ -192,6 +201,18 @@ export default function DishDetailPage() {
             </div>
           )}
 
+          <div className="absolute right-2 top-2 z-[3] sm:right-3 sm:top-3">
+            <DishFavoriteButton
+              isFavourited={dishFavourites.isFavourited(dish.id)}
+              loading={dishFavourites.loadingDishId === dish.id}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                void dishFavourites.toggle(dish.id);
+              }}
+            />
+          </div>
+
           <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent" />
 
           <div className="absolute bottom-3 left-3 right-3 sm:bottom-4 sm:left-4 sm:right-4">
@@ -251,12 +272,6 @@ export default function DishDetailPage() {
           </p>
         </div>
 
-        {isPopular && (
-          <div className="mt-3 text-xs" style={{ color: 'var(--accent-secondary)' }}>
-            🔥 Frequently ordered by customers near you
-          </div>
-        )}
-
         <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
           {dish.section} · {dish.menu_name}
         </p>
@@ -293,7 +308,7 @@ export default function DishDetailPage() {
         <button
           type="button"
           onClick={goFullMenu}
-          className="mt-6 flex min-h-[48px] w-full items-center justify-center rounded-xl px-4 py-3 text-center text-sm font-medium text-white transition-opacity hover:opacity-95 active:opacity-90"
+          className="mt-6 flex min-h-[48px] w-full cursor-pointer items-center justify-center rounded-xl px-4 py-3 text-center text-sm font-medium text-white transition-opacity hover:opacity-95 active:opacity-90"
           style={{ backgroundColor: 'var(--accent-primary)' }}
         >
           <span className="line-clamp-2">View full menu · {dish.restaurant_name}</span>
@@ -316,6 +331,11 @@ export default function DishDetailPage() {
                 restaurantId={String(dish.restaurant_id)}
                 menuId={String(menuId)}
                 itemId={String(item.id)}
+                favourite={{
+                  isFavourited: dishFavourites.isFavourited(item.id),
+                  loading: dishFavourites.loadingDishId === item.id,
+                  onToggle: () => void dishFavourites.toggle(item.id),
+                }}
               />
             ))}
           </div>
