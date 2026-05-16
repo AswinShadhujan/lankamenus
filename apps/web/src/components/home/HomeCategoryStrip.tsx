@@ -35,16 +35,20 @@ export function HomeCategoryStrip({ selected, onToggle }: HomeCategoryStripProps
               type="button"
               onClick={() => onToggle(label)}
               aria-pressed={active}
-              className={`shrink-0 rounded-full border px-4 py-1.5 text-sm transition-all duration-200 ${
-                active ? 'font-medium shadow-md' : ''
+              className={`shrink-0 rounded-full border px-2.5 py-1 text-xs transition-colors duration-150 ${
+                active ? 'font-medium' : 'font-normal'
               }`}
               style={{
-                borderColor: active ? 'var(--text-primary)' : 'var(--border)',
-                backgroundColor: active ? 'var(--text-primary)' : 'var(--surface)',
-                color: active ? 'var(--background)' : 'var(--text-primary)',
+                borderColor: active
+                  ? 'color-mix(in srgb, var(--accent-primary) 45%, var(--border))'
+                  : 'var(--border)',
+                backgroundColor: active
+                  ? 'color-mix(in srgb, var(--accent-primary) 10%, var(--surface))'
+                  : 'transparent',
+                color: active ? 'var(--accent-primary)' : 'var(--text-secondary)',
               }}
             >
-              <span className="mr-1.5" aria-hidden>
+              <span className="mr-1" aria-hidden>
                 {icon}
               </span>
               {label}

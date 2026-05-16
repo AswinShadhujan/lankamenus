@@ -21,22 +21,22 @@ type RestaurantSortChoice = 'none' | 'popular' | 'top_rated' | 'trending' | 'rat
 function filterBtnStyle(active: boolean): CSSProperties {
   return active
     ? {
-        backgroundColor: 'var(--accent-primary)',
-        color: '#ffffff',
-        borderColor: 'var(--accent-primary)',
+        backgroundColor: 'color-mix(in srgb, var(--accent-primary) 10%, var(--surface))',
+        color: 'var(--accent-primary)',
+        borderColor: 'color-mix(in srgb, var(--accent-primary) 45%, var(--border))',
       }
     : {
-        backgroundColor: 'var(--surface)',
+        backgroundColor: 'transparent',
         borderColor: 'var(--border)',
-        color: 'var(--text-primary)',
+        color: 'var(--text-secondary)',
       };
 }
 
 const FILTER_BTN_CLASS =
-  'shrink-0 rounded-full border border-solid px-3.5 py-2 text-sm font-medium whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-primary)]';
+  'shrink-0 rounded-full border border-solid px-2.5 py-1 text-xs font-medium whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--accent-primary)]';
 
 const FILTER_ROW_CLASS =
-  'hide-scrollbar mb-4 flex flex-nowrap items-center gap-3 overflow-x-auto sm:mb-5 [-webkit-overflow-scrolling:touch]';
+  'hide-scrollbar mb-3 flex flex-nowrap items-center gap-2 overflow-x-auto sm:mb-4 [-webkit-overflow-scrolling:touch]';
 
 function sortToChoice(sort: HomeSortMode, filterHighRating: boolean): RestaurantSortChoice {
   if (filterHighRating) return 'rating45';
@@ -225,7 +225,7 @@ export function HomeFiltersProvider({
                   type="button"
                   aria-pressed={active}
                   onClick={() => setDraftDish(active ? null : label)}
-                  className="rounded-full border border-solid px-3 py-2.5 text-center text-sm font-medium transition-colors"
+                  className="rounded-full border border-solid px-2.5 py-1.5 text-center text-xs font-medium transition-colors"
                   style={filterBtnStyle(active)}
                 >
                   {emoji ? (
@@ -278,7 +278,7 @@ export function HomeFiltersProvider({
                 type="button"
                 aria-pressed={active}
                 onClick={() => setDraftSortChoice(active ? 'none' : value)}
-                className="rounded-full border border-solid px-3 py-1.5 text-sm font-medium transition-colors"
+                className="rounded-full border border-solid px-2.5 py-1 text-xs font-medium transition-colors"
                 style={filterBtnStyle(active)}
               >
                 {label}
@@ -485,16 +485,25 @@ export function HomeRestaurantFilterRow() {
   );
 }
 
-/** Section label between dish rails and restaurant rails. */
-export function HomeRestaurantsSectionLabel() {
+function HomePageSectionLabel({ children }: { children: string }) {
   return (
     <p
-      className="mb-3 text-[11px] font-bold uppercase tracking-wider"
+      className="mb-2 text-[10px] font-semibold uppercase tracking-wider"
       style={{ color: 'var(--text-secondary)' }}
     >
-      RESTAURANTS
+      {children}
     </p>
   );
+}
+
+/** Section label above dish rails. */
+export function HomeDishesSectionLabel() {
+  return <HomePageSectionLabel>DISHES</HomePageSectionLabel>;
+}
+
+/** Section label above restaurant rails. */
+export function HomeRestaurantsSectionLabel() {
+  return <HomePageSectionLabel>RESTAURANTS</HomePageSectionLabel>;
 }
 
 /** Single combined row for /restaurants (Near me + restaurant filters). */

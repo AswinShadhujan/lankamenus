@@ -391,7 +391,6 @@ export function PopularDishesSection(
       apiPath={apiPath}
       badgeMode="popular"
       mobileGridLayout
-      seeAllHref="/restaurants"
     />
   );
 }
@@ -415,7 +414,6 @@ export function TrendingDishesSection(
       apiPath={apiPath}
       badgeMode="trending"
       mobileGridLayout
-      seeAllHref="/restaurants"
     />
   );
 }

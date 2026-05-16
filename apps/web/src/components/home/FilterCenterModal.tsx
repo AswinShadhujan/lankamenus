@@ -82,12 +82,10 @@ export function FilterCenterModal({
           <button
             type="button"
             onClick={onApply}
-            className="w-full font-semibold transition-opacity hover:opacity-90 active:opacity-85"
+            className="w-full rounded-lg py-2 text-sm font-medium transition-opacity hover:opacity-90 active:opacity-85"
             style={{
               background: 'var(--accent-primary)',
               color: '#ffffff',
-              borderRadius: '0.5rem',
-              padding: '0.75rem',
             }}
           >
             Apply
@@ -95,8 +93,8 @@ export function FilterCenterModal({
           <button
             type="button"
             onClick={onClear}
-            className="w-full py-1 text-sm font-medium transition-opacity hover:opacity-80"
-            style={{ color: 'var(--accent-primary)' }}
+            className="w-full py-1 text-xs font-medium transition-opacity hover:opacity-80"
+            style={{ color: 'var(--text-secondary)' }}
           >
             Clear
           </button>
