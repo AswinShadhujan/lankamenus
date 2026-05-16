@@ -32,14 +32,6 @@ export function runInitialGeolocation(onDone: (next: UserLocationState) => void)
       const accFinite = acc != null && Number.isFinite(acc);
       const tooLoose = !accFinite || acc > MAX_ACCEPTABLE_ACCURACY_METERS;
 
-      if (process.env.NODE_ENV === 'development') {
-        // eslint-disable-next-line no-console -- temporary accuracy diagnostics
-        console.log('[homeUserLocation]', {
-          accuracyM: accFinite ? acc : null,
-          accepted: !tooLoose,
-        });
-      }
-
       if (tooLoose) {
         onDone({
           status: 'low_accuracy',

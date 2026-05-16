@@ -69,30 +69,37 @@ export default function HomePage() {
     setHasToken(!!getAdminToken());
   }, []);
 
-  const needsGeoForFilters = nearMeGeoEnabled || restaurantNearMeGeoEnabled;
-  const locationReady = !needsGeoForFilters || isLocationResolved(userLocation);
+  useEffect(() => {
+    runInitialGeolocation(setUserLocation);
+  }, []);
 
-  const dishGeoEligible = nearMeGeoEnabled && userLocation.status === 'granted';
-  const restaurantGeoEligible =
-    restaurantNearMeGeoEnabled && userLocation.status === 'granted';
+  const locationReady = isLocationResolved(userLocation);
+  const locationGranted = userLocation.status === 'granted';
 
-  /** Dish rails: top-row Near me. */
-  const homeDishDiscoveryQuery = useMemo(
+  /** Bias by location after permission; strict radius when Near me is on. */
+  const dishGeoQuery = useMemo(
     () =>
-      dishGeoEligible ? buildHomeGeoQuery(userLocation, false, DEFAULT_RADIUS_KM) : {},
-    [userLocation, dishGeoEligible],
+      locationGranted
+        ? buildHomeGeoQuery(userLocation, nearMeGeoEnabled, DEFAULT_RADIUS_KM)
+        : {},
+    [userLocation, locationGranted, nearMeGeoEnabled],
   );
 
-  /** Restaurant rails: mid-page Near me + district. */
-  const homeSharedQuery = useMemo(
+  const restaurantGeoQuery = useMemo(
     () =>
-      mergeDistrictAndGeo(
-        selectedDistricts,
-        restaurantGeoEligible
-          ? buildHomeGeoQuery(userLocation, false, DEFAULT_RADIUS_KM)
-          : {},
-      ),
-    [selectedDistricts, userLocation, restaurantGeoEligible],
+      locationGranted
+        ? buildHomeGeoQuery(userLocation, restaurantNearMeGeoEnabled, DEFAULT_RADIUS_KM)
+        : {},
+    [userLocation, locationGranted, restaurantNearMeGeoEnabled],
+  );
+
+  /** Dish rails: location bias on load; stricter when dish Near me is on. */
+  const homeDishDiscoveryQuery = dishGeoQuery;
+
+  /** Restaurant rails: location bias on load; stricter when restaurant Near me is on. */
+  const homeSharedQuery = useMemo(
+    () => mergeDistrictAndGeo(selectedDistricts, restaurantGeoQuery),
+    [selectedDistricts, restaurantGeoQuery],
   );
 
   const popularDishRailQuery = useMemo(() => {
@@ -125,14 +132,6 @@ export default function HomePage() {
   const loadRails = useCallback(async () => {
     setRailsLoading(true);
     const base = buildRailParams();
-    if (process.env.NODE_ENV === 'development') {
-      // eslint-disable-next-line no-console -- temporary rail request trace
-      console.log('[restaurant rails fetch]', {
-        popular: buildApiUrl('/restaurants', { ...base, sort: 'popular' }),
-        topRated: buildApiUrl('/restaurants', { ...base, sort: 'top_rated' }),
-        trending: buildApiUrl('/restaurants', { ...base, sort: 'trending' }),
-      });
-    }
     try {
       const railResults = await Promise.allSettled([
         fetch(buildApiUrl('/restaurants', { ...base, sort: 'popular' }), { cache: 'no-store' }).then((r) =>

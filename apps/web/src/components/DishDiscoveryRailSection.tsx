@@ -233,18 +233,10 @@ export function DishDiscoveryRailSection({
 
     const dishUrl = buildApiUrl(apiPath, apiQuery);
 
-    if (process.env.NODE_ENV === 'development') {
-      // eslint-disable-next-line no-console -- temporary dish request trace
-      console.log('[dish rail fetch]', apiPath, dishUrl);
-    }
-
     fetch(dishUrl, { cache: 'no-store' })
       .then(async (res) => {
         const data: unknown = await res.json().catch(() => null);
         if (!Array.isArray(data)) {
-          if (process.env.NODE_ENV === 'development') {
-            console.warn('[DishDiscoveryRail]', apiPath, 'not array', res.status, data);
-          }
           return [];
         }
         return data as DishDiscoveryItem[];

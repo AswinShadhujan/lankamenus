@@ -49,12 +49,19 @@ export default function RestaurantsPage() {
     setHasToken(!!getAdminToken());
   }, []);
 
-  const locationReady = !nearMeGeoEnabled || isLocationResolved(userLocation);
-  const geoEligible = nearMeGeoEnabled && userLocation.status === 'granted';
+  useEffect(() => {
+    runInitialGeolocation(setUserLocation);
+  }, []);
+
+  const locationReady = isLocationResolved(userLocation);
+  const locationGranted = userLocation.status === 'granted';
 
   const geoForApi = useMemo(
-    () => (geoEligible ? buildHomeGeoQuery(userLocation, false, DEFAULT_RADIUS_KM) : {}),
-    [userLocation, geoEligible],
+    () =>
+      locationGranted
+        ? buildHomeGeoQuery(userLocation, nearMeGeoEnabled, DEFAULT_RADIUS_KM)
+        : {},
+    [userLocation, locationGranted, nearMeGeoEnabled],
   );
 
   const homeSharedQuery = useMemo(
