@@ -1,15 +1,14 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useEffect, useState } from 'react';
+import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import api, { getAdminToken } from '@/lib/api';
 import { useDishFavourites } from '@/hooks/useDishFavourites';
 import { resolveDishDisplayImageUrl } from '@/lib/dish-image';
-import { parseIngredientParts } from '@/lib/menu-ingredients';
 import { DishDetail, type Menu, type MenuItem } from '@/types/menu';
-import { RatingBadge } from '@/components/ui/RatingBadge';
 import { Skeleton } from '@/components/ui/Skeleton';
+import { VegIndicatorDot } from '@/components/ui/VegIndicatorDot';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { DishCard } from '@/components/ui/DishCard';
 import { DishFavoriteButton } from '@/components/ui/DishFavoriteButton';
@@ -23,7 +22,6 @@ function formatPrice(price: number | string | null | undefined): string | null {
 
 export default function DishDetailPage() {
   const params = useParams();
-  const router = useRouter();
   const id = params?.id as string;
   const menuId = params?.menuId as string;
   const itemId = params?.itemId as string;
@@ -90,15 +88,6 @@ export default function DishDetailPage() {
     };
   }, [menuId, dish?.id]);
 
-  const goFullMenu = () => {
-    if (dish) router.push(`/restaurants/${dish.restaurant_id}`);
-  };
-
-  const ingredientParts = useMemo(
-    () => (dish ? parseIngredientParts(dish.ingredients) : []),
-    [dish],
-  );
-
   if (loading) {
     return (
       <div className="min-h-screen pb-8 transition-colors duration-200" style={{ backgroundColor: 'var(--background)' }}>
@@ -143,8 +132,6 @@ export default function DishDetailPage() {
   const priceFormatted = formatPrice(dish.price);
   const resolvedImage = resolveDishDisplayImageUrl(dish);
   const imageSrc = resolvedImage && !imageError ? resolvedImage : null;
-  const isPopular = !!dish.is_popular;
-  const isRecommended = !!dish.is_recommended;
   const isAvailable = dish.is_available !== false;
 
   return (
@@ -216,42 +203,34 @@ export default function DishDetailPage() {
           <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent" />
 
           <div className="absolute bottom-3 left-3 right-3 sm:bottom-4 sm:left-4 sm:right-4">
-            <h1 className="text-xl font-semibold text-white sm:text-2xl">{dish.name}</h1>
+            <h1 className="flex items-center gap-2 text-xl font-semibold text-white sm:text-2xl">
+              <span>{dish.name}</span>
+              <VegIndicatorDot veg={dish.veg} />
+            </h1>
+
+            <Link
+              href={`/restaurants/${dish.restaurant_id}`}
+              className="mt-1.5 inline-block transition-opacity hover:opacity-85"
+              style={{
+                fontSize: '0.9rem',
+                color: 'var(--accent-primary)',
+                fontWeight: 500,
+              }}
+            >
+              {dish.restaurant_name}
+            </Link>
 
             <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <div className="flex flex-wrap gap-1.5 sm:gap-2">
-                {isPopular && (
-                  <span className="rounded-full bg-orange-500/90 px-2 py-1 text-xs text-white shadow">
-                    🔥 Popular
-                  </span>
-                )}
-
-                {isRecommended && (
-                  <span className="rounded-full bg-purple-500/90 px-2 py-1 text-xs text-white shadow">
-                    ⭐ Recommended
-                  </span>
-                )}
-
-                {isAvailable && (
+                {isAvailable ? (
                   <span className="rounded-full bg-green-500/90 px-2 py-1 text-xs text-white shadow">
                     ● Available
                   </span>
-                )}
-
-                {!isAvailable && (
+                ) : (
                   <span className="rounded-full bg-red-500/90 px-2 py-1 text-xs text-white shadow">
                     ● Unavailable
                   </span>
                 )}
-
-                {dish.veg ? (
-                  <span
-                    className="rounded-full border px-2 py-1 text-xs text-white shadow-sm"
-                    style={{ borderColor: 'color-mix(in srgb, white 45%, transparent)', backgroundColor: 'rgba(0,0,0,0.25)' }}
-                  >
-                    Vegetarian
-                  </span>
-                ) : null}
               </div>
 
               <span className="text-base font-semibold sm:text-lg" style={{ color: 'var(--accent-secondary)' }}>
@@ -261,58 +240,11 @@ export default function DishDetailPage() {
           </div>
         </div>
 
-        <div className="mt-6 space-y-2">
-          <h3 className="text-xs font-semibold uppercase" style={{ color: 'var(--text-secondary)' }}>
-            About this dish
-          </h3>
-
+        {dish.description?.trim() ? (
           <p className="text-sm leading-relaxed" style={{ color: 'var(--text-primary)' }}>
-            {dish.description?.trim() ||
-              'A delicious dish prepared with fresh ingredients and authentic flavors.'}
+            {dish.description.trim()}
           </p>
-        </div>
-
-        <p className="text-xs" style={{ color: 'var(--text-secondary)' }}>
-          {dish.section} · {dish.menu_name}
-        </p>
-
-        {dish.rating != null && (
-          <div>
-            <RatingBadge rating={dish.rating} count={dish.rating_count} />
-          </div>
-        )}
-
-        {ingredientParts.length > 0 && (
-          <div className="space-y-2">
-            <h3 className="text-xs font-semibold uppercase" style={{ color: 'var(--text-secondary)' }}>
-              Ingredients
-            </h3>
-            <ul className="flex flex-wrap gap-2">
-              {ingredientParts.map((ing, idx) => (
-                <li
-                  key={`${idx}-${ing}`}
-                  className="rounded-lg border px-3 py-1.5 text-sm"
-                  style={{
-                    borderColor: 'var(--border)',
-                    backgroundColor: 'var(--surface)',
-                    color: 'var(--text-primary)',
-                  }}
-                >
-                  {ing}
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
-
-        <button
-          type="button"
-          onClick={goFullMenu}
-          className="mt-6 flex min-h-[48px] w-full cursor-pointer items-center justify-center rounded-xl px-4 py-3 text-center text-sm font-medium text-white transition-opacity hover:opacity-95 active:opacity-90"
-          style={{ backgroundColor: 'var(--accent-primary)' }}
-        >
-          <span className="line-clamp-2">View full menu · {dish.restaurant_name}</span>
-        </button>
+        ) : null}
 
         <div className="space-y-3">
           <h3 className="mt-8 mb-3 text-lg font-semibold" style={{ color: 'var(--text-primary)' }}>

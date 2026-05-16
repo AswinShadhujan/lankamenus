@@ -29,6 +29,45 @@ function formatPrice(
   return `${c} ${num.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+const menuSearchInputClass =
+  'rounded-full border-[1.5px] border-[var(--border)] bg-[var(--surface)] outline-none transition-[border-color,box-shadow] focus:border-[var(--accent-primary)] focus:shadow-[0_0_0_3px_color-mix(in_srgb,var(--accent-primary)_15%,transparent)]';
+
+function MenuSearchInput({
+  value,
+  onChange,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div className="relative mb-6">
+      <input
+        type="search"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder="Search this menu…"
+        aria-label="Search this menu"
+        className={`w-full px-4 pr-10 text-[0.875rem] ${menuSearchInputClass}`}
+        style={{
+          height: 40,
+          color: 'var(--text-primary)',
+        }}
+      />
+      {value.length > 0 ? (
+        <button
+          type="button"
+          onClick={() => onChange('')}
+          className="absolute right-3 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full text-lg leading-none transition-opacity hover:opacity-70"
+          style={{ color: 'var(--text-secondary)' }}
+          aria-label="Clear search"
+        >
+          ×
+        </button>
+      ) : null}
+    </div>
+  );
+}
+
 function sortMenuData(menu: Menu): MenuSection[] {
   return [...(menu.menu_sections ?? [])]
     .sort((a, b) => a.sort_order - b.sort_order)
@@ -155,6 +194,7 @@ export function RestaurantMenuExperience({
   noMenuAvailable,
 }: RestaurantMenuExperienceProps) {
   const [activeSectionId, setActiveSectionId] = useState<number | null>(null);
+  const [menuQuery, setMenuQuery] = useState('');
   const scrollLockRef = useRef(false);
   const observerRef = useRef<IntersectionObserver | null>(null);
   const sectionRefs = useRef<Map<number, HTMLElement>>(new Map());
@@ -164,16 +204,33 @@ export function RestaurantMenuExperience({
     [menu],
   );
 
+  const filteredSections = useMemo(() => {
+    const q = menuQuery.trim().toLowerCase();
+    if (!q) return sections;
+    return sections
+      .map((s) => ({
+        ...s,
+        menu_items: (s.menu_items ?? []).filter((item) =>
+          item.name.toLowerCase().includes(q),
+        ),
+      }))
+      .filter((s) => (s.menu_items?.length ?? 0) > 0);
+  }, [sections, menuQuery]);
+
+  const menuQueryTrimmed = menuQuery.trim();
+  const hasMenuQuery = menuQueryTrimmed.length > 0;
+  const noMenuSearchResults = hasMenuQuery && filteredSections.length === 0;
+
   useLayoutEffect(() => {
-    if (!sections.length) {
+    if (!filteredSections.length) {
       setActiveSectionId(null);
       return;
     }
     setActiveSectionId((prev) => {
-      if (prev != null && sections.some((s) => s.id === prev)) return prev;
-      return sections[0].id;
+      if (prev != null && filteredSections.some((s) => s.id === prev)) return prev;
+      return filteredSections[0].id;
     });
-  }, [sections]);
+  }, [filteredSections]);
 
   const registerSection = useCallback((id: number, el: HTMLElement | null) => {
     const obs = observerRef.current;
@@ -193,7 +250,7 @@ export function RestaurantMenuExperience({
     observerRef.current?.disconnect();
     observerRef.current = null;
 
-    if (!sections.length) {
+    if (!filteredSections.length) {
       setActiveSectionId(null);
       return;
     }
@@ -225,7 +282,7 @@ export function RestaurantMenuExperience({
     });
     observerRef.current = obs;
 
-    for (const s of sections) {
+    for (const s of filteredSections) {
       const el = sectionRefs.current.get(s.id);
       if (el) obs.observe(el);
     }
@@ -234,7 +291,7 @@ export function RestaurantMenuExperience({
       obs.disconnect();
       observerRef.current = null;
     };
-  }, [sections]);
+  }, [filteredSections]);
 
   const scrollToSection = useCallback((sectionId: number) => {
     const el = document.getElementById(sectionDomId(sectionId));
@@ -267,14 +324,23 @@ export function RestaurantMenuExperience({
   }
 
   return (
-    <div className="lg:grid lg:grid-cols-[minmax(0,11rem)_minmax(0,1fr)] lg:items-start lg:gap-10 xl:grid-cols-[13rem_minmax(0,1fr)]">
+    <div>
+      <MenuSearchInput value={menuQuery} onChange={setMenuQuery} />
+
+      {noMenuSearchResults ? (
+        <p className="text-small" style={{ color: 'var(--text-secondary)' }}>
+          No items found for &apos;{menuQueryTrimmed}&apos;
+        </p>
+      ) : null}
+
+      <div className="lg:grid lg:grid-cols-[minmax(0,11rem)_minmax(0,1fr)] lg:items-start lg:gap-10 xl:grid-cols-[13rem_minmax(0,1fr)]">
       <aside className="mb-0 hidden lg:block">
           <nav
             className="sticky top-20 space-y-1 border-l-2 pl-4"
             style={{ borderColor: 'var(--border)' }}
             aria-label="Menu categories"
           >
-            {sections.map((s) => {
+            {filteredSections.map((s) => {
               const active = activeSectionId === s.id;
               return (
                 <button
@@ -301,7 +367,7 @@ export function RestaurantMenuExperience({
       </aside>
 
       <div className="min-w-0">
-        {sections.length > 0 && (
+        {filteredSections.length > 0 && (
             <div
               className="sticky top-0 z-30 -mx-4 mb-6 border-b px-4 py-3 backdrop-blur-md lg:hidden sm:-mx-6 sm:px-6"
               style={{
@@ -314,7 +380,7 @@ export function RestaurantMenuExperience({
                 className="-mx-1 flex gap-2 overflow-x-auto pb-1 pt-0.5 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
                 style={{ WebkitOverflowScrolling: 'touch' }}
               >
-                {sections.map((s) => {
+                {filteredSections.map((s) => {
                   const active = activeSectionId === s.id;
                   return (
                     <button
@@ -344,9 +410,9 @@ export function RestaurantMenuExperience({
           <p className="text-small" style={{ color: 'var(--text-secondary)' }}>
             No sections in this menu.
           </p>
-        ) : (
+        ) : noMenuSearchResults ? null : (
           <div className="space-y-10 sm:space-y-12">
-            {sections.map((section) => (
+            {filteredSections.map((section) => (
               <section
                 key={section.id}
                 id={sectionDomId(section.id)}
@@ -378,6 +444,7 @@ export function RestaurantMenuExperience({
             ))}
           </div>
         )}
+      </div>
       </div>
     </div>
   );

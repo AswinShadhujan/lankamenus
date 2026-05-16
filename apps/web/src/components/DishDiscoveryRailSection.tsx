@@ -1,8 +1,9 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import Link from 'next/link';
-import { getApiBaseUrl, resolvePublicMediaUrl } from '@/lib/api';
+import { resolvePublicMediaUrl } from '@/lib/api';
+import { buildApiUrl } from '@/lib/buildApiUrl';
 import type { DishDiscoveryItem } from '@/types/featuredDish';
 import { HorizontalScroll } from '@/components/ui/HorizontalScroll';
 import { useHasMounted } from '@/hooks/useHasMounted';
@@ -19,7 +20,7 @@ export type DishRailFavouritesProps = {
 export type DishDiscoveryRailSectionProps = {
   title: string;
   sectionSubtitle?: string | null;
-  apiPath: '/dishes/featured' | '/dishes/trending' | '/dishes/nearby';
+  apiPath: '/dishes/featured' | '/dishes/trending' | '/dishes/nearby' | '/dishes';
   /** Initial geolocation attempt finished (any outcome). */
   locationReady: boolean;
   /**
@@ -29,28 +30,23 @@ export type DishDiscoveryRailSectionProps = {
   locationLabel?: string | null;
   badgeMode: 'popular' | 'trending';
   onSeeAll?: () => void;
+  seeAllHref?: string;
+  /** Mobile 2×2 grid + desktop horizontal rail (Popular / Trending dish sections). */
+  mobileGridLayout?: boolean;
   /** When set, shows a favourite control on each dish image (single hook at page level). */
   dishFavourites?: DishRailFavouritesProps | null;
 };
 
+const MOBILE_DISH_COUNT = 4;
+const DESKTOP_DISH_COUNT = 5;
+
 function dishQueryHasScope(q: Record<string, string | number>): boolean {
   const d = q.district;
   if (typeof d === 'string' && d.trim() !== '') return true;
-  return q.lat != null;
-}
-
-function buildApiUrl(path: string, params?: Record<string, string | number>): string {
-  const base = (getApiBaseUrl() || window.location.origin).replace(/\/$/, '');
-  const url = new URL(path, `${base}/`);
-  if (params) {
-    for (const [k, v] of Object.entries(params)) {
-      if (v === undefined || v === null) continue;
-      if (typeof v === 'number' && !Number.isFinite(v)) continue;
-      url.searchParams.set(k, String(v));
-    }
-  }
-  url.searchParams.set('_ts', String(Date.now()));
-  return url.toString();
+  if (q.lat != null) return true;
+  const cat = q.category;
+  if (typeof cat === 'string' && cat.trim() !== '') return true;
+  return false;
 }
 
 function formatPrice(price: number | null, currency: string): string | null {
@@ -61,6 +57,90 @@ function formatPrice(price: number | null, currency: string): string | null {
 
 function dishHref(d: DishDiscoveryItem): string {
   return `/restaurants/${d.restaurant.id}/menus/${d.menu_id}/items/${d.id}`;
+}
+
+function DishDiscoveryCard({
+  dish,
+  imageBadge,
+  dishFavourites,
+  className = '',
+}: {
+  dish: DishDiscoveryItem;
+  imageBadge: ReactNode;
+  dishFavourites: DishRailFavouritesProps | null;
+  className?: string;
+}) {
+  const href = dishHref(dish);
+  const priceStr = formatPrice(dish.price, dish.currency);
+  const img = resolvePublicMediaUrl(dish.image_url);
+
+  return (
+    <Link
+      href={href}
+      className={`lm-card-shadow group relative block w-full overflow-hidden rounded-2xl border outline-none transition-[transform,box-shadow] duration-200 active:scale-[0.99] hover:scale-[1.02] focus-visible:ring-2 focus-visible:ring-[color-mix(in_srgb,var(--accent-primary)_55%,transparent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)] ${className}`}
+      style={{ borderColor: 'var(--border)', backgroundColor: 'var(--surface)' }}
+    >
+      <div className="relative h-[140px] overflow-hidden md:h-[160px]">
+        {img ? (
+          // eslint-disable-next-line @next/next/no-img-element -- remote dish URLs
+          <img
+            src={img}
+            alt={dish.name}
+            loading="lazy"
+            decoding="async"
+            className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
+          />
+        ) : (
+          <div
+            className="flex h-full w-full items-center justify-center text-3xl opacity-50"
+            style={{ backgroundColor: 'var(--border)' }}
+            aria-hidden
+          >
+            🍽
+          </div>
+        )}
+        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" aria-hidden />
+        {imageBadge}
+        {dishFavourites ? (
+          <div
+            className="absolute right-2 top-2 z-[2]"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
+            onKeyDown={(e) => e.key === 'Enter' && e.preventDefault()}
+            role="presentation"
+          >
+            <DishFavoriteButton
+              isFavourited={dishFavourites.isFavourited(dish.id)}
+              loading={dishFavourites.loadingId === dish.id}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                void dishFavourites.onToggle(dish.id);
+              }}
+            />
+          </div>
+        ) : null}
+      </div>
+      <div className="space-y-1 p-3">
+        <h3
+          className="line-clamp-2 text-sm font-medium leading-tight"
+          style={{ color: 'var(--text-primary)' }}
+        >
+          {dish.name}
+        </h3>
+        {priceStr != null ? (
+          <p className="text-sm font-semibold" style={{ color: 'var(--accent-secondary)' }}>
+            {priceStr}
+          </p>
+        ) : null}
+        <p className="truncate text-xs" style={{ color: 'var(--text-secondary)' }}>
+          {dish.restaurant.name}
+        </p>
+      </div>
+    </Link>
+  );
 }
 
 function PopularImageBadge() {
@@ -81,10 +161,36 @@ function TrendingImageBadge() {
 
 const DISH_CARD_WIDTH = 'w-[min(312px,calc(100vw-2.75rem))] shrink-0 snap-start';
 
+function DishCardSkeleton() {
+  return (
+    <div
+      className="lm-card-shadow overflow-hidden rounded-2xl border"
+      style={{ borderColor: 'var(--border)', backgroundColor: 'var(--surface)' }}
+    >
+      <Skeleton className="h-[140px] w-full rounded-none md:h-[160px]" />
+      <div className="space-y-1 p-3">
+        <Skeleton className="min-h-[2.25rem] w-[94%] rounded-md" />
+        <Skeleton className="h-[1.125rem] w-20 rounded-md" />
+        <Skeleton className="h-[0.875rem] w-[78%] rounded-md" />
+      </div>
+    </div>
+  );
+}
+
+function DishDiscoverySkeletonGrid() {
+  return (
+    <div className="grid grid-cols-2 gap-3 md:hidden">
+      {Array.from({ length: MOBILE_DISH_COUNT }).map((_, i) => (
+        <DishCardSkeleton key={i} />
+      ))}
+    </div>
+  );
+}
+
 function DishDiscoverySkeletonRow() {
   return (
     <HorizontalScroll>
-      {Array.from({ length: 6 }).map((_, i) => (
+      {Array.from({ length: DESKTOP_DISH_COUNT }).map((_, i) => (
         <div key={i} className={DISH_CARD_WIDTH}>
           <div
             className="lm-card-shadow overflow-hidden rounded-2xl border"
@@ -112,6 +218,8 @@ export function DishDiscoveryRailSection({
   locationLabel = null,
   badgeMode,
   onSeeAll,
+  seeAllHref,
+  mobileGridLayout = false,
   dishFavourites = null,
 }: DishDiscoveryRailSectionProps) {
   const hasMounted = useHasMounted();
@@ -179,6 +287,7 @@ export function DishDiscoveryRailSection({
           subtitle={sectionSubtitle}
           meta={locationLabel}
           onSeeAll={onSeeAll}
+          seeAllHref={seeAllHref}
         />
         <p className="mt-2 max-w-xl text-sm leading-relaxed" style={{ color: 'var(--text-secondary)' }}>
           {emptyCopy}
@@ -188,6 +297,8 @@ export function DishDiscoveryRailSection({
   }
 
   const imageBadge = badgeMode === 'popular' ? <PopularImageBadge /> : <TrendingImageBadge />;
+  const mobileDishes = (dishes ?? []).slice(0, MOBILE_DISH_COUNT);
+  const desktopDishes = (dishes ?? []).slice(0, DESKTOP_DISH_COUNT);
 
   return (
     <section className="scroll-mt-4" aria-busy={loading}>
@@ -196,6 +307,7 @@ export function DishDiscoveryRailSection({
         subtitle={sectionSubtitle}
         meta={locationLabel}
         onSeeAll={onSeeAll}
+        seeAllHref={seeAllHref}
       />
 
       <div className="relative">
@@ -207,91 +319,60 @@ export function DishDiscoveryRailSection({
           }`}
           aria-hidden={!loading}
         >
-          <DishDiscoverySkeletonRow />
+          {mobileGridLayout ? (
+            <>
+              <DishDiscoverySkeletonGrid />
+              <div className="hidden md:block">
+                <DishDiscoverySkeletonRow />
+              </div>
+            </>
+          ) : (
+            <DishDiscoverySkeletonRow />
+          )}
         </div>
 
         {!loading && dishes && dishes.length > 0 ? (
           <div className="relative z-[2] transition-opacity duration-200 ease-out lm-fade-in opacity-100">
-            <HorizontalScroll>
-              {dishes.map((d) => {
-                const href = dishHref(d);
-                const priceStr = formatPrice(d.price, d.currency);
-                const img = resolvePublicMediaUrl(d.image_url);
-
-                return (
+            {mobileGridLayout ? (
+              <>
+                <div className="grid grid-cols-2 gap-3 md:hidden">
+                  {mobileDishes.map((d) => (
+                    <DishDiscoveryCard
+                      key={`${d.restaurant.id}-${d.menu_id}-${d.id}-m`}
+                      dish={d}
+                      imageBadge={imageBadge}
+                      dishFavourites={dishFavourites}
+                    />
+                  ))}
+                </div>
+                <div className="hidden gap-4 overflow-x-auto hide-scrollbar md:flex [-webkit-overflow-scrolling:touch]">
+                  {desktopDishes.map((d) => (
+                    <div key={`${d.restaurant.id}-${d.menu_id}-${d.id}-d`} className={DISH_CARD_WIDTH}>
+                      <DishDiscoveryCard
+                        dish={d}
+                        imageBadge={imageBadge}
+                        dishFavourites={dishFavourites}
+                      />
+                    </div>
+                  ))}
+                </div>
+              </>
+            ) : (
+              <HorizontalScroll>
+                {dishes.map((d) => (
                   <div
                     key={`${d.restaurant.id}-${d.menu_id}-${d.id}`}
                     className={DISH_CARD_WIDTH}
                   >
-                    <Link
-                      href={href}
-                      className="lm-card-shadow group relative block overflow-hidden rounded-2xl border outline-none transition-[transform,box-shadow] duration-200 active:scale-[0.99] hover:scale-[1.02] focus-visible:ring-2 focus-visible:ring-[color-mix(in_srgb,var(--accent-primary)_55%,transparent)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--background)]"
-                      style={{ borderColor: 'var(--border)', backgroundColor: 'var(--surface)' }}
-                    >
-                      <div className="relative h-[160px] overflow-hidden">
-                        {img ? (
-                          // eslint-disable-next-line @next/next/no-img-element -- remote dish URLs
-                          <img
-                            src={img}
-                            alt={d.name}
-                            loading="lazy"
-                            decoding="async"
-                            className="h-full w-full object-cover transition duration-300 group-hover:scale-105"
-                          />
-                        ) : (
-                          <div
-                            className="flex h-full w-full items-center justify-center text-3xl opacity-50"
-                            style={{ backgroundColor: 'var(--border)' }}
-                            aria-hidden
-                          >
-                            🍽
-                          </div>
-                        )}
-                        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
-                        {imageBadge}
-                        {dishFavourites ? (
-                          <div
-                            className="absolute right-2 top-2 z-[2]"
-                            onClick={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                            }}
-                            onKeyDown={(e) => e.key === 'Enter' && e.preventDefault()}
-                            role="presentation"
-                          >
-                            <DishFavoriteButton
-                              isFavourited={dishFavourites.isFavourited(d.id)}
-                              loading={dishFavourites.loadingId === d.id}
-                              onClick={(e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                void dishFavourites.onToggle(d.id);
-                              }}
-                            />
-                          </div>
-                        ) : null}
-                      </div>
-                      <div className="space-y-1 p-3">
-                        <h3
-                          className="line-clamp-2 text-sm font-medium leading-tight"
-                          style={{ color: 'var(--text-primary)' }}
-                        >
-                          {d.name}
-                        </h3>
-                        {priceStr != null ? (
-                          <p className="text-sm font-semibold" style={{ color: 'var(--accent-secondary)' }}>
-                            {priceStr}
-                          </p>
-                        ) : null}
-                        <p className="truncate text-xs" style={{ color: 'var(--text-secondary)' }}>
-                          {d.restaurant.name}
-                        </p>
-                      </div>
-                    </Link>
+                    <DishDiscoveryCard
+                      dish={d}
+                      imageBadge={imageBadge}
+                      dishFavourites={dishFavourites}
+                    />
                   </div>
-                );
-              })}
-            </HorizontalScroll>
+                ))}
+              </HorizontalScroll>
+            )}
           </div>
         ) : null}
       </div>
@@ -303,16 +384,22 @@ export function PopularDishesSection(
   props: Omit<
     DishDiscoveryRailSectionProps,
     'title' | 'apiPath' | 'badgeMode' | 'sectionSubtitle'
-  > & { sectionSubtitle?: string | null },
+  > & {
+    sectionSubtitle?: string | null;
+    title?: string;
+    apiPath?: DishDiscoveryRailSectionProps['apiPath'];
+  },
 ) {
-  const { sectionSubtitle, ...rest } = props;
+  const { sectionSubtitle = null, title, apiPath = '/dishes/featured', ...rest } = props;
   return (
     <DishDiscoveryRailSection
       {...rest}
-      title="🔥 Popular Dishes"
-      sectionSubtitle={sectionSubtitle ?? 'Standout picks from menus near you'}
-      apiPath="/dishes/featured"
+      title={title ?? '🔥 Popular Dishes'}
+      sectionSubtitle={sectionSubtitle}
+      apiPath={apiPath}
       badgeMode="popular"
+      mobileGridLayout
+      seeAllHref="/restaurants"
     />
   );
 }
@@ -321,16 +408,22 @@ export function TrendingDishesSection(
   props: Omit<
     DishDiscoveryRailSectionProps,
     'title' | 'apiPath' | 'badgeMode' | 'sectionSubtitle'
-  > & { sectionSubtitle?: string | null },
+  > & {
+    sectionSubtitle?: string | null;
+    title?: string;
+    apiPath?: DishDiscoveryRailSectionProps['apiPath'];
+  },
 ) {
-  const { sectionSubtitle, ...rest } = props;
+  const { sectionSubtitle = null, title, apiPath = '/dishes/trending', ...rest } = props;
   return (
     <DishDiscoveryRailSection
       {...rest}
-      title="⚡ Trending Now"
-      sectionSubtitle={sectionSubtitle ?? 'Dishes gaining traction near you'}
-      apiPath="/dishes/trending"
+      title={title ?? '⚡ Trending Now'}
+      sectionSubtitle={sectionSubtitle}
+      apiPath={apiPath}
       badgeMode="trending"
+      mobileGridLayout
+      seeAllHref="/restaurants"
     />
   );
 }
@@ -346,7 +439,7 @@ export function NearbyDishesSection(
     <DishDiscoveryRailSection
       {...rest}
       title="🍽 Dishes for you"
-      sectionSubtitle={sectionSubtitle ?? 'Dishes from places near you'}
+      sectionSubtitle={sectionSubtitle}
       apiPath="/dishes/nearby"
       badgeMode="popular"
     />

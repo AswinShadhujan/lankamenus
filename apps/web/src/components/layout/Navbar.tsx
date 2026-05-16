@@ -239,6 +239,14 @@ export function Navbar({
 
         <nav className="hidden md:flex md:ml-auto shrink-0 items-center justify-end gap-1 sm:gap-3">
           <Link
+            href="/restaurants"
+            className="rounded-md px-2 py-1.5 transition-colors hover:bg-[var(--surface)]"
+            style={{ color: pathname === '/restaurants' ? 'var(--accent-primary)' : 'var(--text-primary)' }}
+            title="Restaurants"
+          >
+            <span className="text-small">Restaurants</span>
+          </Link>
+          <Link
             href="/favourites"
             className="rounded-md px-2 py-1.5 transition-colors hover:bg-[var(--surface)]"
             style={{ color: pathname === '/favourites' ? 'var(--accent-primary)' : 'var(--text-primary)' }}

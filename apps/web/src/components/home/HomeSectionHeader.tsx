@@ -1,5 +1,6 @@
 'use client';
 
+import Link from 'next/link';
 import type { ReactNode } from 'react';
 
 type HomeSectionHeaderProps = {
@@ -8,6 +9,7 @@ type HomeSectionHeaderProps = {
   /** Muted line (e.g. location) shown after subtitle. */
   meta?: string | null;
   onSeeAll?: () => void;
+  seeAllHref?: string;
   /** Extra right-side content (e.g. result count). Shown before See all. */
   rightSlot?: ReactNode;
 };
@@ -17,6 +19,7 @@ export function HomeSectionHeader({
   subtitle = null,
   meta = null,
   onSeeAll,
+  seeAllHref,
   rightSlot,
 }: HomeSectionHeaderProps) {
   const detail =
@@ -36,7 +39,15 @@ export function HomeSectionHeader({
       </div>
       <div className="flex shrink-0 items-center gap-3 sm:pt-0.5">
         {rightSlot}
-        {onSeeAll ? (
+        {seeAllHref ? (
+          <Link
+            href={seeAllHref}
+            className="text-sm font-semibold transition-opacity hover:opacity-80 hover:underline"
+            style={{ color: 'var(--accent-primary)' }}
+          >
+            See all
+          </Link>
+        ) : onSeeAll ? (
           <button
             type="button"
             onClick={onSeeAll}

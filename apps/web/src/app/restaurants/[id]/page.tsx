@@ -18,7 +18,6 @@ import {
 import { RestaurantCategoryChips } from '@/components/restaurant/RestaurantCategoryChips';
 import type { Menu } from '@/types/menu';
 import { buildGoogleMapsRestaurantUrl } from '@/lib/buildGoogleMapsRestaurantUrl';
-type TabId = 'menu' | 'reviews';
 
 export default function RestaurantDetailPage() {
   const params = useParams();
@@ -28,7 +27,6 @@ export default function RestaurantDetailPage() {
   const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
   const [menus, setMenus] = useState<MenuListItem[]>([]);
   const [selectedMenu, setSelectedMenu] = useState<Menu | null>(null);
-  const [activeTab, setActiveTab] = useState<TabId>('menu');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [hasToken, setHasToken] = useState(false);
@@ -120,11 +118,7 @@ export default function RestaurantDetailPage() {
         <Skeleton className="aspect-[21/9] w-full rounded-xl" />
         <Skeleton className="mt-6 h-8 w-3/4" />
         <Skeleton className="mt-2 h-4 w-1/2" />
-        <div className="mt-8 flex gap-2 border-b border-[var(--border)] pb-2">
-          <Skeleton className="h-9 w-16 rounded-md" />
-          <Skeleton className="h-9 w-20 rounded-md" />
-        </div>
-        <h2 className="mt-6 text-sm font-semibold" style={{ color: 'var(--text-secondary)' }}>
+        <h2 className="mt-8 text-sm font-semibold" style={{ color: 'var(--text-secondary)' }}>
           Menu
         </h2>
         <MenuMenuSkeleton />
@@ -147,14 +141,8 @@ export default function RestaurantDetailPage() {
     );
   }
 
-  const category = restaurant.cuisine_tags?.join(', ') ?? '—';
   const location = [restaurant.city, restaurant.district].filter(Boolean).join(', ');
   const googleMapsUrl = buildGoogleMapsRestaurantUrl(restaurant);
-
-  const tabs: { id: TabId; label: string }[] = [
-    { id: 'menu', label: 'Menu' },
-    { id: 'reviews', label: 'Reviews' },
-  ];
 
   return (
     <main className="mx-auto max-w-3xl py-6 pl-[max(1rem,env(safe-area-inset-left,0px))] pr-[max(1rem,env(safe-area-inset-right,0px))] pb-[max(1.5rem,env(safe-area-inset-bottom,0px))] sm:pl-6 sm:pr-6 lg:max-w-5xl">
@@ -214,8 +202,14 @@ export default function RestaurantDetailPage() {
       <header className="mb-6">
         <div className="min-w-0">
             <h1
-              className="text-xl font-bold leading-tight sm:text-h1"
-              style={{ color: 'var(--text-primary)', wordBreak: 'break-word' }}
+              className="leading-tight"
+              style={{
+                fontSize: '1.5rem',
+                fontWeight: 700,
+                color: 'var(--text-primary)',
+                fontFamily: 'var(--font-display, var(--font-sans))',
+                wordBreak: 'break-word',
+              }}
             >
               {restaurant.name_default}
             </h1>
@@ -246,10 +240,27 @@ export default function RestaurantDetailPage() {
                 {restaurant.address_line1}
               </p>
             )}
-            <p className="mt-1 text-xs sm:text-small" style={{ color: 'var(--text-secondary)' }}>
-              Price: {restaurant.price_level ?? '—'} · Veg: {restaurant.veg_friendly ? 'Yes' : 'No'} · Halal:{' '}
-              {restaurant.halal_certified ? 'Yes' : 'No'}
-            </p>
+            <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5">
+              <span
+                className="inline-flex items-center gap-1"
+                style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}
+                aria-label={restaurant.veg_friendly ? 'Vegetarian friendly' : 'Not vegetarian friendly'}
+              >
+                Veg {restaurant.veg_friendly ? '✅' : '❌'}
+              </span>
+              <span
+                className="inline-flex items-center gap-1"
+                style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}
+                aria-label={restaurant.halal_certified ? 'Halal certified' : 'Not halal certified'}
+              >
+                Halal {restaurant.halal_certified ? '✅' : '❌'}
+              </span>
+            </div>
+            {restaurant.price_level != null && (
+              <p className="mt-1 text-xs sm:text-small" style={{ color: 'var(--text-secondary)' }}>
+                Price: {restaurant.price_level}
+              </p>
+            )}
             <div className="mt-3 flex flex-wrap items-center gap-2">
               <a
                 href={googleMapsUrl}
@@ -322,41 +333,14 @@ export default function RestaurantDetailPage() {
           </div>
         )}
 
-      <nav className="mb-6 flex gap-1 border-b" style={{ borderColor: 'var(--border)' }}>
-        {tabs.map((tab) => (
-          <button
-            key={tab.id}
-            type="button"
-            onClick={() => setActiveTab(tab.id)}
-            className="min-h-[48px] min-w-[44px] flex-1 border-b-2 px-3 py-2.5 text-small font-medium transition-colors sm:flex-none sm:px-5"
-            style={{
-              borderColor: activeTab === tab.id ? 'var(--accent-primary)' : 'transparent',
-              color: activeTab === tab.id ? 'var(--accent-primary)' : 'var(--text-secondary)',
-            }}
-          >
-            {tab.label}
-          </button>
-        ))}
-      </nav>
-
-      {activeTab === 'menu' && (
-        <section>
-          <SectionHeader title="Menu" className="mb-4" />
-          <RestaurantMenuExperience
-            restaurantIdParam={id}
-            menu={selectedMenu}
-            noMenuAvailable={menus.length === 0}
-          />
-        </section>
-      )}
-
-      {activeTab === 'reviews' && (
-        <section>
-          <p className="text-small" style={{ color: 'var(--text-secondary)' }}>
-            Reviews coming soon.
-          </p>
-        </section>
-      )}
+      <section>
+        <SectionHeader title="Menu" className="mb-4" />
+        <RestaurantMenuExperience
+          restaurantIdParam={id}
+          menu={selectedMenu}
+          noMenuAvailable={menus.length === 0}
+        />
+      </section>
     </main>
   );
 }

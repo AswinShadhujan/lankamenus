@@ -22,5 +22,5 @@ export function resolveBannerHref(b: BannerCtaPayload): string {
   if (type === 'custom_url' && b.cta_url?.trim()) {
     return b.cta_url.trim();
   }
-  return '/#all-restaurants';
+  return '/restaurants';
 }

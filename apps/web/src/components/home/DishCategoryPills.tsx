@@ -1,17 +1,6 @@
 'use client';
 
-const DISH_CATEGORY_ITEMS: { label: string; emoji?: string }[] = [
-  { label: 'Kottu', emoji: '🥩' },
-  { label: 'Rice & Curry', emoji: '🍛' },
-  { label: 'Lump Rice', emoji: '🍃' },
-  { label: 'Biryani', emoji: '🍚' },
-  { label: 'Roti', emoji: '🥙' },
-  { label: 'Devilled', emoji: '🌶️' },
-  { label: 'Short Eats', emoji: '🥟' },
-  { label: 'Pizza', emoji: '🍕' },
-  { label: 'Noodles', emoji: '🍜' },
-  { label: 'Hoppers', emoji: '🫓' },
-];
+import { HOME_DISH_CATEGORIES } from '@/constants/homeDishCategories';
 
 export type DishCategoryPillsProps = {
   selected: string | null;
@@ -25,7 +14,7 @@ export function DishCategoryPills({ selected, onSelect }: DishCategoryPillsProps
       style={{ scrollbarWidth: 'none' }}
       aria-label="Dish types"
     >
-      {DISH_CATEGORY_ITEMS.map(({ label, emoji }) => {
+      {HOME_DISH_CATEGORIES.map(({ label, emoji }) => {
         const isSelected = selected === label;
         return (
           <li key={label} className="shrink-0">
@@ -41,9 +30,10 @@ export function DishCategoryPills({ selected, onSelect }: DishCategoryPillsProps
                 borderRadius: 9999,
                 ...(isSelected
                   ? {
-                      backgroundColor: 'var(--accent-secondary)',
+                      backgroundColor: 'var(--accent-primary)',
                       color: '#ffffff',
-                      borderColor: 'var(--accent-secondary)',
+                      borderColor: 'var(--accent-primary)',
+                      boxShadow: '0 4px 12px rgba(195, 0, 23, 0.25)',
                     }
                   : {
                       backgroundColor: 'var(--surface)',
