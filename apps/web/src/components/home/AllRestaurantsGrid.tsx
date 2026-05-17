@@ -13,7 +13,7 @@ const GRID_PAGE_SIZE = 12;
 const RATING_THRESHOLD = 4.5;
 
 const ALL_RESTAURANTS_GRID =
-  'grid grid-cols-1 gap-2 items-stretch sm:grid-cols-2 sm:gap-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6';
+  'grid grid-cols-2 gap-3 items-stretch md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6';
 
 export type AllRestaurantsGridProps = {
   buildListParams: () => Record<string, string | number>;

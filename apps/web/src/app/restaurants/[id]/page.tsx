@@ -15,9 +15,12 @@ import {
   MenuMenuSkeleton,
   RestaurantMenuExperience,
 } from '@/components/restaurant/RestaurantMenuExperience';
-import { RestaurantCategoryChips } from '@/components/restaurant/RestaurantCategoryChips';
 import type { Menu } from '@/types/menu';
 import { buildGoogleMapsRestaurantUrl } from '@/lib/buildGoogleMapsRestaurantUrl';
+import { normalizeRestaurantCategories } from '@/lib/foodCategories';
+import { RestaurantDetailMobileInfo } from '@/components/restaurant/RestaurantDetailMobileInfo';
+import { RestaurantDetailDesktopInfo } from '@/components/restaurant/RestaurantDetailDesktopInfo';
+import { RestaurantDirectionsLink } from '@/components/restaurant/RestaurantDirectionsLink';
 
 export default function RestaurantDetailPage() {
   const params = useParams();
@@ -113,7 +116,7 @@ export default function RestaurantDetailPage() {
 
   if (loading) {
     return (
-      <main className="mx-auto max-w-3xl py-6 pl-[max(1rem,env(safe-area-inset-left,0px))] pr-[max(1rem,env(safe-area-inset-right,0px))] pb-[max(1.5rem,env(safe-area-inset-bottom,0px))] sm:pl-6 sm:pr-6 lg:max-w-5xl">
+      <main className="mx-auto max-w-3xl py-6 pl-[max(1rem,env(safe-area-inset-left,0px))] pr-[max(1rem,env(safe-area-inset-right,0px))] pb-[max(1.5rem,env(safe-area-inset-bottom,0px))] text-black sm:pl-6 sm:pr-6 lg:max-w-5xl">
         <Skeleton className="mb-4 h-6 w-32" />
         <Skeleton className="aspect-[21/9] w-full rounded-xl" />
         <Skeleton className="mt-6 h-8 w-3/4" />
@@ -128,7 +131,7 @@ export default function RestaurantDetailPage() {
 
   if (error || !restaurant) {
     return (
-      <main className="mx-auto max-w-3xl py-6 pl-[max(1rem,env(safe-area-inset-left,0px))] pr-[max(1rem,env(safe-area-inset-right,0px))] pb-[max(1.5rem,env(safe-area-inset-bottom,0px))] sm:pl-6 sm:pr-6 lg:max-w-5xl">
+      <main className="mx-auto max-w-3xl py-6 pl-[max(1rem,env(safe-area-inset-left,0px))] pr-[max(1rem,env(safe-area-inset-right,0px))] pb-[max(1.5rem,env(safe-area-inset-bottom,0px))] text-black sm:pl-6 sm:pr-6 lg:max-w-5xl">
         <ErrorState message={error ?? 'Restaurant not found'} />
         <Link
           href="/"
@@ -141,11 +144,13 @@ export default function RestaurantDetailPage() {
     );
   }
 
-  const location = [restaurant.city, restaurant.district].filter(Boolean).join(', ');
   const googleMapsUrl = buildGoogleMapsRestaurantUrl(restaurant);
+  const heroCuisineTags = normalizeRestaurantCategories(
+    Array.isArray(restaurant.cuisine_tags) ? restaurant.cuisine_tags : [],
+  );
 
   return (
-    <main className="mx-auto max-w-3xl py-6 pl-[max(1rem,env(safe-area-inset-left,0px))] pr-[max(1rem,env(safe-area-inset-right,0px))] pb-[max(1.5rem,env(safe-area-inset-bottom,0px))] sm:pl-6 sm:pr-6 lg:max-w-5xl">
+    <main className="mx-auto max-w-3xl py-6 pl-[max(1rem,env(safe-area-inset-left,0px))] pr-[max(1rem,env(safe-area-inset-right,0px))] pb-[max(1.5rem,env(safe-area-inset-bottom,0px))] text-black sm:pl-6 sm:pr-6 lg:max-w-5xl">
       <Link
         href="/"
         className="mb-4 inline-flex min-h-[44px] items-center text-small font-medium transition-opacity hover:opacity-80"
@@ -161,6 +166,25 @@ export default function RestaurantDetailPage() {
           className="h-full w-full object-cover"
         />
         <div className="pointer-events-none absolute inset-x-0 top-0 z-[1] h-28 bg-gradient-to-b from-black/50 to-transparent" aria-hidden />
+        <div className="pointer-events-none absolute inset-x-0 bottom-0 z-[1] h-20 bg-gradient-to-t from-black/45 to-transparent" aria-hidden />
+
+        {heroCuisineTags.length > 0 ? (
+          <div className="absolute bottom-3 left-3 z-[2] flex max-w-[85%] flex-wrap gap-1.5 sm:bottom-4 sm:left-4">
+            {heroCuisineTags.map((label) => (
+              <span
+                key={label}
+                className="rounded-full px-2.5 py-0.5 text-xs font-medium text-white"
+                style={{
+                  backgroundColor: 'rgba(255, 255, 255, 0.22)',
+                  border: '1px solid rgba(255, 255, 255, 0.35)',
+                  backdropFilter: 'blur(6px)',
+                }}
+              >
+                {label}
+              </span>
+            ))}
+          </div>
+        ) : null}
 
         <div className="absolute right-3 top-3 z-[2] flex flex-col items-center gap-0.5 sm:right-4 sm:top-4">
           <button
@@ -200,138 +224,30 @@ export default function RestaurantDetailPage() {
       </div>
 
       <header className="mb-6">
-        <div className="min-w-0">
-            <h1
-              className="leading-tight"
-              style={{
-                fontSize: '1.5rem',
-                fontWeight: 700,
-                color: 'var(--text-primary)',
-                fontFamily: 'var(--font-display, var(--font-sans))',
-                wordBreak: 'break-word',
-              }}
-            >
-              {restaurant.name_default}
-            </h1>
-            <div className="mt-2 flex flex-wrap items-center gap-2">
-              {restaurant.rating != null && (
-                <RatingBadge rating={restaurant.rating} />
-              )}
-              {restaurant.cuisine_tags?.length ? (
-                <RestaurantCategoryChips
-                  tags={restaurant.cuisine_tags}
-                  size="sm"
-                  showUnknown
-                  className="gap-1.5 sm:gap-2"
-                />
-              ) : (
-                <span className="text-small" style={{ color: 'var(--text-secondary)' }}>
-                  —
-                </span>
-              )}
-            </div>
-            {location && (
-              <p className="mt-1 text-small" style={{ color: 'var(--text-secondary)' }}>
-                {location}
-              </p>
-            )}
-            {restaurant.address_line1 && (
-              <p className="text-small" style={{ color: 'var(--text-secondary)' }}>
-                {restaurant.address_line1}
-              </p>
-            )}
-            <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1.5">
-              <span
-                className="inline-flex items-center gap-1"
-                style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}
-                aria-label={restaurant.veg_friendly ? 'Vegetarian friendly' : 'Not vegetarian friendly'}
-              >
-                Veg {restaurant.veg_friendly ? '✅' : '❌'}
-              </span>
-              <span
-                className="inline-flex items-center gap-1"
-                style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}
-                aria-label={restaurant.halal_certified ? 'Halal certified' : 'Not halal certified'}
-              >
-                Halal {restaurant.halal_certified ? '✅' : '❌'}
-              </span>
-            </div>
-            {restaurant.price_level != null && (
-              <p className="mt-1 text-xs sm:text-small" style={{ color: 'var(--text-secondary)' }}>
-                Price: {restaurant.price_level}
-              </p>
-            )}
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              <a
-                href={googleMapsUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                title="Open in Google Maps"
+        <div className="min-w-0 md:hidden">
+          <div className="flex items-center justify-between gap-2">
+              <h1
+                className="min-w-0 flex-1 text-lg font-semibold leading-snug tracking-tight"
                 style={{
-                  display: 'inline-flex',
-                  alignItems: 'center',
-                  gap: '6px',
-                  padding: '6px 12px',
-                  borderRadius: '9999px',
-                  border: '1px solid var(--border)',
-                  background: 'var(--surface)',
-                  color: 'var(--text-secondary)',
-                  fontSize: '0.8rem',
-                  fontWeight: 500,
-                  textDecoration: 'none',
-                  transition: 'border-color 0.15s ease',
+                  color: '#000000',
+                  fontFamily: 'var(--font-display, var(--font-sans))',
+                  wordBreak: 'break-word',
                 }}
               >
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  aria-hidden
-                >
-                  <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z" />
-                  <circle cx="12" cy="10" r="3" />
-                </svg>
-                Directions
-              </a>
+                {restaurant.name_default}
+              </h1>
+              <RestaurantDirectionsLink googleMapsUrl={googleMapsUrl} />
             </div>
+          {restaurant.rating != null ? (
+            <div className="mt-1.5">
+              <RatingBadge rating={restaurant.rating} />
+            </div>
+          ) : null}
         </div>
+        <RestaurantDetailDesktopInfo restaurant={restaurant} googleMapsUrl={googleMapsUrl} />
       </header>
 
-      {restaurant.restaurant_extra_costs != null &&
-        restaurant.restaurant_extra_costs.length > 0 && (
-          <div
-            className="mb-6 rounded-xl border px-4 py-3"
-            style={{ borderColor: 'var(--border)', backgroundColor: 'var(--surface)' }}
-          >
-            <p
-              className="mb-2 text-xs font-semibold uppercase tracking-wide"
-              style={{ color: 'var(--text-secondary)' }}
-            >
-              Extra costs
-            </p>
-            <ul className="space-y-1">
-              {restaurant.restaurant_extra_costs.map((cost) => (
-                <li
-                  key={cost.id}
-                  className="flex items-center justify-between text-sm"
-                >
-                  <span style={{ color: 'var(--text-primary)' }}>{cost.label}</span>
-                  <span
-                    className="font-medium tabular-nums"
-                    style={{ color: 'var(--text-secondary)' }}
-                  >
-                    {Number(cost.rate)}%
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        )}
+      <RestaurantDetailMobileInfo restaurant={restaurant} />
 
       <section>
         <SectionHeader title="Menu" className="mb-4" />

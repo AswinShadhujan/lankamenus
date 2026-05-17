@@ -50,7 +50,7 @@ function MenuSearchInput({
         className={`w-full px-4 pr-10 text-[0.875rem] ${menuSearchInputClass}`}
         style={{
           height: 40,
-          color: 'var(--text-primary)',
+          color: '#000000',
         }}
       />
       {value.length > 0 ? (
@@ -58,7 +58,7 @@ function MenuSearchInput({
           type="button"
           onClick={() => onChange('')}
           className="absolute right-3 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full text-lg leading-none transition-opacity hover:opacity-70"
-          style={{ color: 'var(--text-secondary)' }}
+          style={{ color: '#333333' }}
           aria-label="Clear search"
         >
           ×
@@ -108,7 +108,7 @@ const MenuDishCard = memo(function MenuDishCard({
               <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                 <span
                   className="text-base font-bold leading-snug sm:text-lg"
-                  style={{ color: 'var(--text-primary)' }}
+                  style={{ color: '#000000' }}
                 >
                   {item.name}
                 </span>
@@ -118,7 +118,7 @@ const MenuDishCard = memo(function MenuDishCard({
                     style={{
                       backgroundColor:
                         'color-mix(in srgb, var(--accent-primary) 14%, transparent)',
-                      color: 'var(--text-primary)',
+                      color: '#000000',
                     }}
                   >
                     🔥 Popular
@@ -130,7 +130,7 @@ const MenuDishCard = memo(function MenuDishCard({
                     style={{
                       backgroundColor:
                         'color-mix(in srgb, #8b5cf6 16%, transparent)',
-                      color: 'var(--text-primary)',
+                      color: '#000000',
                     }}
                   >
                     ⭐ Recommended
@@ -140,7 +140,7 @@ const MenuDishCard = memo(function MenuDishCard({
                   <span
                     className="rounded-full px-2 py-0.5 text-[10px] font-medium sm:text-xs"
                     style={{
-                      color: 'var(--text-secondary)',
+                      color: '#333333',
                       border: '1px solid var(--border)',
                     }}
                   >
@@ -151,7 +151,7 @@ const MenuDishCard = memo(function MenuDishCard({
               {ingredientsLine ? (
                 <p
                   className="mt-1 text-xs leading-relaxed sm:text-sm"
-                  style={{ color: 'var(--text-secondary)' }}
+                  style={{ color: '#333333' }}
                 >
                   {ingredientsLine}
                 </p>
@@ -159,7 +159,7 @@ const MenuDishCard = memo(function MenuDishCard({
               {item.description != null && item.description !== '' ? (
                 <p
                   className="mt-1 line-clamp-2 text-xs leading-relaxed sm:text-sm"
-                  style={{ color: 'var(--text-secondary)' }}
+                  style={{ color: '#333333' }}
                 >
                   {item.description}
                 </p>
@@ -168,7 +168,7 @@ const MenuDishCard = memo(function MenuDishCard({
             {priceStr != null ? (
               <span
                 className="shrink-0 text-right text-base font-bold tabular-nums sm:text-lg"
-                style={{ color: 'var(--accent-secondary)' }}
+                style={{ color: '#000000' }}
               >
                 {priceStr}
               </span>
@@ -313,7 +313,7 @@ export function RestaurantMenuExperience({
 
   if (noMenuAvailable) {
     return (
-      <p className="text-small" style={{ color: 'var(--text-secondary)' }}>
+      <p className="text-small" style={{ color: '#333333' }}>
         No menu available yet.
       </p>
     );
@@ -328,7 +328,7 @@ export function RestaurantMenuExperience({
       <MenuSearchInput value={menuQuery} onChange={setMenuQuery} />
 
       {noMenuSearchResults ? (
-        <p className="text-small" style={{ color: 'var(--text-secondary)' }}>
+        <p className="text-small" style={{ color: '#333333' }}>
           No items found for &apos;{menuQueryTrimmed}&apos;
         </p>
       ) : null}
@@ -353,7 +353,7 @@ export function RestaurantMenuExperience({
                   style={{
                     color: active
                       ? 'var(--accent-primary)'
-                      : 'var(--text-secondary)',
+                      : '#333333',
                     backgroundColor: active
                       ? 'color-mix(in srgb, var(--accent-primary) 12%, transparent)'
                       : 'transparent',
@@ -391,7 +391,7 @@ export function RestaurantMenuExperience({
                       style={{
                         color: active
                           ? 'var(--background)'
-                          : 'var(--text-primary)',
+                          : '#000000',
                         backgroundColor: active
                           ? 'var(--accent-primary)'
                           : 'var(--surface)',
@@ -407,7 +407,7 @@ export function RestaurantMenuExperience({
         )}
 
         {sections.length === 0 ? (
-          <p className="text-small" style={{ color: 'var(--text-secondary)' }}>
+          <p className="text-small" style={{ color: '#333333' }}>
             No sections in this menu.
           </p>
         ) : noMenuSearchResults ? null : (
@@ -426,7 +426,7 @@ export function RestaurantMenuExperience({
                 >
                   <h4
                     className="text-xs font-bold uppercase tracking-[0.12em] sm:text-sm"
-                    style={{ color: 'var(--text-primary)' }}
+                    style={{ color: '#000000' }}
                   >
                     {section.name}
                   </h4>

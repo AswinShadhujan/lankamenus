@@ -9,7 +9,7 @@ export function SectionHeader({ title, className = '' }: SectionHeaderProps) {
   return (
     <h2
       className={`text-h3 ${className}`}
-      style={{ color: 'var(--text-primary)' }}
+      style={{ color: '#000000' }}
     >
       {title}
     </h2>

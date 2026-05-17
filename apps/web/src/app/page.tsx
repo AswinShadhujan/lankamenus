@@ -366,7 +366,7 @@ export default function HomePage() {
           restaurants={trendingRail}
           maxItems={RAIL_PAGE_SIZE}
           isLoading={railsLoading}
-          scrollOnly
+          mobileGridLayout
           seeAllHref="/restaurants"
           hasToken={hasToken}
           favouriteIds={favouriteIds}
