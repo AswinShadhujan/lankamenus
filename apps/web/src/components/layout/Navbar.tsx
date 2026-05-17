@@ -64,7 +64,12 @@ export function Navbar({
   }, [pathname, searchValue]);
 
   const isHome = pathname === '/';
+  const isRestaurantsList = pathname === '/restaurants';
   const searchDisplayValue = isHome ? homeDraft : localQuery;
+
+  useEffect(() => {
+    if (isRestaurantsList) setSearchScope('restaurants');
+  }, [isRestaurantsList]);
 
   const clearBlurTimer = useCallback(() => {
     if (blurCloseTimer.current) {
@@ -205,7 +210,7 @@ export function Navbar({
         <div id="search" className="w-full min-w-0 md:flex md:flex-1 md:justify-center">
           <div
             ref={searchShellRef}
-            className={`relative w-full min-w-0 ${isHome ? 'md:mx-auto md:max-w-4xl lg:max-w-5xl xl:max-w-6xl 2xl:max-w-7xl' : 'md:mx-auto md:max-w-md'}`}
+            className={`relative w-full min-w-0 ${isHome || isRestaurantsList ? 'md:mx-auto md:max-w-4xl lg:max-w-5xl xl:max-w-6xl 2xl:max-w-7xl' : 'md:mx-auto md:max-w-md'}`}
             onBlurCapture={handleSearchShellBlurCapture}
           >
             <SearchBar
@@ -214,14 +219,14 @@ export function Navbar({
               onSubmit={handleSearchSubmit}
               onFocus={openSuggestions}
               placeholder={
-                searchScope === 'dishes'
-                  ? 'Search dishes…'
-                  : 'Search restaurants…'
+                isRestaurantsList || searchScope === 'restaurants'
+                  ? 'Search restaurants…'
+                  : 'Search dishes…'
               }
               className="w-full"
               variant={isHome ? 'premium' : 'default'}
               scope={searchScope}
-              onScopeChange={setSearchScope}
+              onScopeChange={isHome ? setSearchScope : undefined}
             />
             {showSuggestPanel && (
               <SearchDropdown
