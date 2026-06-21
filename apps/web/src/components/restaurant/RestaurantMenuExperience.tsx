@@ -50,7 +50,7 @@ function MenuSearchInput({
         className={`w-full px-4 pr-10 text-[0.875rem] ${menuSearchInputClass}`}
         style={{
           height: 40,
-          color: '#000000',
+          color: 'var(--text-primary)',
         }}
       />
       {value.length > 0 ? (
@@ -58,7 +58,7 @@ function MenuSearchInput({
           type="button"
           onClick={() => onChange('')}
           className="absolute right-3 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full text-lg leading-none transition-opacity hover:opacity-70"
-          style={{ color: '#333333' }}
+          style={{ color: 'var(--text-primary)' }}
           aria-label="Clear search"
         >
           ×
@@ -108,7 +108,7 @@ const MenuDishCard = memo(function MenuDishCard({
               <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
                 <span
                   className="text-base font-bold leading-snug sm:text-lg"
-                  style={{ color: '#000000' }}
+                  style={{ color: 'var(--text-primary)' }}
                 >
                   {item.name}
                 </span>
@@ -118,7 +118,7 @@ const MenuDishCard = memo(function MenuDishCard({
                     style={{
                       backgroundColor:
                         'color-mix(in srgb, var(--accent-primary) 14%, transparent)',
-                      color: '#000000',
+                      color: 'var(--text-primary)',
                     }}
                   >
                     🔥 Popular
@@ -130,7 +130,7 @@ const MenuDishCard = memo(function MenuDishCard({
                     style={{
                       backgroundColor:
                         'color-mix(in srgb, #8b5cf6 16%, transparent)',
-                      color: '#000000',
+                      color: 'var(--text-primary)',
                     }}
                   >
                     ⭐ Recommended
@@ -140,7 +140,7 @@ const MenuDishCard = memo(function MenuDishCard({
                   <span
                     className="rounded-full px-2 py-0.5 text-[10px] font-medium sm:text-xs"
                     style={{
-                      color: '#333333',
+                      color: 'var(--text-primary)',
                       border: '1px solid var(--border)',
                     }}
                   >
@@ -151,7 +151,7 @@ const MenuDishCard = memo(function MenuDishCard({
               {ingredientsLine ? (
                 <p
                   className="mt-1 text-xs leading-relaxed sm:text-sm"
-                  style={{ color: '#333333' }}
+                  style={{ color: 'var(--text-primary)' }}
                 >
                   {ingredientsLine}
                 </p>
@@ -159,7 +159,7 @@ const MenuDishCard = memo(function MenuDishCard({
               {item.description != null && item.description !== '' ? (
                 <p
                   className="mt-1 line-clamp-2 text-xs leading-relaxed sm:text-sm"
-                  style={{ color: '#333333' }}
+                  style={{ color: 'var(--text-primary)' }}
                 >
                   {item.description}
                 </p>
@@ -168,7 +168,7 @@ const MenuDishCard = memo(function MenuDishCard({
             {priceStr != null ? (
               <span
                 className="shrink-0 text-right text-base font-bold tabular-nums sm:text-lg"
-                style={{ color: '#000000' }}
+                style={{ color: 'var(--text-primary)' }}
               >
                 {priceStr}
               </span>
@@ -313,7 +313,7 @@ export function RestaurantMenuExperience({
 
   if (noMenuAvailable) {
     return (
-      <p className="text-small" style={{ color: '#333333' }}>
+      <p className="text-small" style={{ color: 'var(--text-primary)' }}>
         No menu available yet.
       </p>
     );
@@ -328,7 +328,7 @@ export function RestaurantMenuExperience({
       <MenuSearchInput value={menuQuery} onChange={setMenuQuery} />
 
       {noMenuSearchResults ? (
-        <p className="text-small" style={{ color: '#333333' }}>
+        <p className="text-small" style={{ color: 'var(--text-primary)' }}>
           No items found for &apos;{menuQueryTrimmed}&apos;
         </p>
       ) : null}
@@ -348,12 +348,12 @@ export function RestaurantMenuExperience({
                   type="button"
                   onClick={() => scrollToSection(s.id)}
                   className={`block w-full rounded-r-md py-2.5 pl-2 text-left text-sm font-semibold transition-colors ${
-                    active ? '' : 'opacity-70 hover:opacity-100'
+                    active ? '' : 'hover:opacity-90'
                   }`}
                   style={{
                     color: active
                       ? 'var(--accent-primary)'
-                      : '#333333',
+                      : 'var(--text-primary)',
                     backgroundColor: active
                       ? 'color-mix(in srgb, var(--accent-primary) 12%, transparent)'
                       : 'transparent',
@@ -391,7 +391,7 @@ export function RestaurantMenuExperience({
                       style={{
                         color: active
                           ? 'var(--background)'
-                          : '#000000',
+                          : 'var(--text-primary)',
                         backgroundColor: active
                           ? 'var(--accent-primary)'
                           : 'var(--surface)',
@@ -407,7 +407,7 @@ export function RestaurantMenuExperience({
         )}
 
         {sections.length === 0 ? (
-          <p className="text-small" style={{ color: '#333333' }}>
+          <p className="text-small" style={{ color: 'var(--text-primary)' }}>
             No sections in this menu.
           </p>
         ) : noMenuSearchResults ? null : (
@@ -426,7 +426,7 @@ export function RestaurantMenuExperience({
                 >
                   <h4
                     className="text-xs font-bold uppercase tracking-[0.12em] sm:text-sm"
-                    style={{ color: '#000000' }}
+                    style={{ color: 'var(--text-primary)' }}
                   >
                     {section.name}
                   </h4>

@@ -14,6 +14,13 @@ import type { DishGeoQueryDto } from './dto/dish-geo.query.dto';
 /** Menu-item candidates before in-memory geo blend. */
 const DISH_GEO_BLEND_POOL = 64;
 
+/** Light portion row for discovery rails. */
+export type DishDiscoveryPortionRow = {
+  id: number;
+  name: string;
+  price: number;
+};
+
 /** Unified discovery card JSON for featured + trending. */
 export type DishDiscoveryRow = {
   id: number;
@@ -25,6 +32,8 @@ export type DishDiscoveryRow = {
   is_recommended: boolean;
   click_count: number;
   menu_id: number;
+  has_portions: boolean;
+  portions: DishDiscoveryPortionRow[];
   restaurant: {
     id: number;
     name: string;
@@ -47,6 +56,7 @@ type RawDishRow = {
   restaurant_rating: number | null;
   /** Present when featured/trending queries include geo bias or strict radius. */
   rest_dist_km?: number;
+  has_portions?: boolean;
 };
 
 @Injectable()
@@ -116,6 +126,63 @@ export class DishesService {
     return useGeo
       ? Prisma.sql`, rest_dist_km ASC NULLS LAST`
       : Prisma.sql``;
+  }
+
+  private dishHasPortionsSelectSql(): Prisma.Sql {
+    return Prisma.sql`, EXISTS (
+      SELECT 1 FROM menu_item_portions mip WHERE mip.menu_item_id = mi.id
+    ) AS has_portions`;
+  }
+
+  private mapRow(r: RawDishRow): DishDiscoveryRow {
+    return {
+      id: r.id,
+      name: r.name,
+      price: r.price != null ? Number(r.price) : null,
+      currency: r.currency?.trim() || 'LKR',
+      image_url: r.image_url,
+      is_popular: r.is_popular,
+      is_recommended: r.is_recommended,
+      click_count: r.click_count ?? 0,
+      menu_id: r.menu_id,
+      has_portions: Boolean(r.has_portions),
+      portions: [],
+      restaurant: {
+        id: r.restaurant_id,
+        name: r.restaurant_name,
+        rating:
+          r.restaurant_rating != null &&
+          !Number.isNaN(Number(r.restaurant_rating))
+            ? Number(r.restaurant_rating)
+            : null,
+      },
+    };
+  }
+
+  private async enrichDiscoveryRows(rows: RawDishRow[]): Promise<DishDiscoveryRow[]> {
+    const mapped = rows.map((r) => this.mapRow(r));
+    const itemIds = mapped.filter((d) => d.has_portions).map((d) => d.id);
+    if (itemIds.length === 0) {
+      return mapped;
+    }
+
+    const portionRows = await this.prisma.menu_item_portions.findMany({
+      where: { menu_item_id: { in: itemIds }, is_available: true },
+      orderBy: [{ sort_order: 'asc' }, { price: 'asc' }],
+      select: { id: true, name: true, price: true, menu_item_id: true },
+    });
+
+    const byItem = new Map<number, DishDiscoveryPortionRow[]>();
+    for (const p of portionRows) {
+      const list = byItem.get(p.menu_item_id) ?? [];
+      list.push({ id: p.id, name: p.name, price: Number(p.price) });
+      byItem.set(p.menu_item_id, list);
+    }
+
+    return mapped.map((d) => ({
+      ...d,
+      portions: d.has_portions ? (byItem.get(d.id) ?? []) : [],
+    }));
   }
 
   /** km from restaurant to point — used for blended ranking (bias / strict). */
@@ -457,29 +524,6 @@ export class DishesService {
     `;
   }
 
-  private mapRow(r: RawDishRow): DishDiscoveryRow {
-    return {
-      id: r.id,
-      name: r.name,
-      price: r.price != null ? Number(r.price) : null,
-      currency: r.currency?.trim() || 'LKR',
-      image_url: r.image_url,
-      is_popular: r.is_popular,
-      is_recommended: r.is_recommended,
-      click_count: r.click_count ?? 0,
-      menu_id: r.menu_id,
-      restaurant: {
-        id: r.restaurant_id,
-        name: r.restaurant_name,
-        rating:
-          r.restaurant_rating != null &&
-          !Number.isNaN(Number(r.restaurant_rating))
-            ? Number(r.restaurant_rating)
-            : null,
-      },
-    };
-  }
-
   /**
    * Popular: `is_popular` / `is_recommended` + `restaurant.popular_score`.
    * With lat/lng (bias or strict), blends distance into ranking so local results surface.
@@ -531,6 +575,7 @@ export class DishesService {
         r.name_default AS restaurant_name,
         r.rating AS restaurant_rating,
         r.popular_score AS restaurant_popular_score
+        ${this.dishHasPortionsSelectSql()}
         ${distSelect}
       FROM menu_items mi
       LEFT JOIN media_assets ma ON ma.id = mi.media_asset_id
@@ -570,6 +615,7 @@ export class DishesService {
           r.name_default AS restaurant_name,
           r.rating AS restaurant_rating,
           r.popular_score AS restaurant_popular_score
+          ${this.dishHasPortionsSelectSql()}
           ${distSelect}
         FROM menu_items mi
         LEFT JOIN media_assets ma ON ma.id = mi.media_asset_id
@@ -625,7 +671,7 @@ export class DishesService {
       );
     }
 
-    return parsed.map((r) => this.mapRow(r));
+    return this.enrichDiscoveryRows(parsed);
   }
 
   /**
@@ -677,6 +723,7 @@ export class DishesService {
         r.id AS restaurant_id,
         r.name_default AS restaurant_name,
         r.rating AS restaurant_rating
+        ${this.dishHasPortionsSelectSql()}
         ${distSelect}
       FROM menu_items mi
       LEFT JOIN media_assets ma ON ma.id = mi.media_asset_id
@@ -713,6 +760,7 @@ export class DishesService {
           r.id AS restaurant_id,
           r.name_default AS restaurant_name,
           r.rating AS restaurant_rating
+          ${this.dishHasPortionsSelectSql()}
           ${distSelect}
         FROM menu_items mi
         LEFT JOIN media_assets ma ON ma.id = mi.media_asset_id
@@ -757,7 +805,7 @@ export class DishesService {
     }
     parsed = parsed.slice(0, 10);
 
-    const mapped = parsed.map((r) => this.mapRow(r));
+    const mapped = await this.enrichDiscoveryRows(parsed);
 
     if (this.isDevDebug() && mapped.length > 0) {
       this.logger.debug(
@@ -815,6 +863,7 @@ export class DishesService {
         r.name_default AS restaurant_name,
         r.rating AS restaurant_rating,
         r.popular_score AS restaurant_popular_score
+        ${this.dishHasPortionsSelectSql()}
         ${distSelect}
       FROM menu_items mi
       LEFT JOIN media_assets ma ON ma.id = mi.media_asset_id
@@ -844,7 +893,7 @@ export class DishesService {
       );
     }
 
-    return parsed.slice(0, 16).map((r) => this.mapRow(r));
+    return this.enrichDiscoveryRows(parsed.slice(0, 16));
   }
 
   /**
@@ -910,6 +959,7 @@ export class DishesService {
         r.name_default AS restaurant_name,
         r.rating AS restaurant_rating,
         r.popular_score AS restaurant_popular_score
+        ${this.dishHasPortionsSelectSql()}
         ${distSelect}
       FROM menu_items mi
       LEFT JOIN media_assets ma ON ma.id = mi.media_asset_id
@@ -939,6 +989,6 @@ export class DishesService {
       );
     }
 
-    return parsed.slice(0, limit).map((r) => this.mapRow(r));
+    return this.enrichDiscoveryRows(parsed.slice(0, limit));
   }
 }

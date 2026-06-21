@@ -380,7 +380,7 @@ export default function HomePage() {
       <div className="text-center" style={{ padding: '1.5rem 0' }}>
         <Link
           href="/restaurants"
-          className="inline-block text-xs font-medium transition-opacity hover:opacity-80"
+          className="inline-block text-xs font-medium transition-opacity hover:opacity-80 sm:text-sm"
           style={{ color: 'var(--text-secondary)' }}
         >
           Browse all restaurants →

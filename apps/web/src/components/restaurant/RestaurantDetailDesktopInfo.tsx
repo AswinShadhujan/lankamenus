@@ -8,17 +8,17 @@ type RestaurantDetailDesktopInfoProps = {
 };
 
 const LABEL_STYLE: CSSProperties = {
-  fontSize: '10px',
+  fontSize: '12px',
   fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
   fontWeight: 500,
   letterSpacing: '0.08em',
   textTransform: 'uppercase',
-  color: '#333333',
+  color: 'var(--text-primary)',
 };
 
 const VALUE_STYLE: CSSProperties = {
   fontSize: '14px',
-  color: '#000000',
+  color: 'var(--text-primary)',
 };
 
 const ROW_BORDER: CSSProperties = {
@@ -74,7 +74,7 @@ function DietIndicator({ label, positive }: { label: string; positive: boolean }
   return (
     <span
       className="inline-flex items-center gap-1 text-sm"
-      style={{ color: '#000000' }}
+      style={{ color: 'var(--text-primary)' }}
       aria-label={positive ? `${label} available` : `${label} not available`}
     >
       {label} {positive ? '✅' : '❌'}
@@ -115,7 +115,7 @@ export function RestaurantDetailDesktopInfo({
           style={{
             fontSize: '22px',
             fontWeight: 500,
-            color: '#000000',
+            color: 'var(--text-primary)',
             fontFamily: 'var(--font-display, var(--font-sans))',
             wordBreak: 'break-word',
           }}
@@ -139,10 +139,10 @@ export function RestaurantDetailDesktopInfo({
               Address
             </span>
             <span className="flex min-w-0 items-center gap-2 leading-snug">
-              <span style={{ color: '#333333' }}>
+              <span style={{ color: 'var(--text-primary)' }}>
                 <MapPinIcon />
               </span>
-              <span style={{ color: '#000000', fontSize: '14px' }}>{addressLine}</span>
+              <span style={{ color: 'var(--text-primary)', fontSize: '14px' }}>{addressLine}</span>
             </span>
           </a>
         ) : null}
@@ -157,10 +157,10 @@ export function RestaurantDetailDesktopInfo({
         {hasPrice ? (
           <DefRow label="Price range">
             <span className="inline-flex flex-wrap items-baseline gap-2">
-              <span style={{ fontSize: '14px', fontWeight: 500, color: '#000000' }}>
+              <span style={{ fontSize: '14px', fontWeight: 500, color: 'var(--text-primary)' }}>
                 {'$'.repeat(Math.min(4, Math.max(1, Math.round(restaurant.price_level!))))}
               </span>
-              <span style={{ fontSize: '12px', fontStyle: 'italic', color: '#333333' }}>
+              <span style={{ fontSize: '12px', fontStyle: 'italic', color: 'var(--text-primary)' }}>
                 {priceRangeNote(restaurant.price_level!)}
               </span>
             </span>
@@ -174,7 +174,7 @@ export function RestaurantDetailDesktopInfo({
                 <p
                   key={cost.id}
                   className="m-0"
-                  style={{ fontSize: '12px', color: '#333333' }}
+                  style={{ fontSize: '12px', color: 'var(--text-primary)' }}
                 >
                   · {Number(cost.rate)}% {cost.label.toLowerCase()} applies
                 </p>

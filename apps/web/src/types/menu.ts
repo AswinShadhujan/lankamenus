@@ -47,6 +47,15 @@ export interface DishDetailRestaurant {
   slug: string | null;
 }
 
+export interface DishPortion {
+  id: number;
+  name: string;
+  price: number;
+  is_available: boolean;
+  sort_order: number;
+  serves?: number | null;
+}
+
 /** Response from GET /menus/:menuId/items/:itemId (dish detail with context). */
 export interface DishDetail {
   id: number;
@@ -54,6 +63,8 @@ export interface DishDetail {
   description?: string | null;
   price?: number | string | null;
   currency?: string | null;
+  portions?: DishPortion[];
+  has_portions?: boolean;
   veg?: boolean | null;
   is_available?: boolean;
   is_popular?: boolean;

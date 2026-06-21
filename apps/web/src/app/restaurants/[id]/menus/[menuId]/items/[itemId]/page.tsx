@@ -6,19 +6,13 @@ import Link from 'next/link';
 import api, { getAdminToken } from '@/lib/api';
 import { useDishFavourites } from '@/hooks/useDishFavourites';
 import { resolveDishDisplayImageUrl } from '@/lib/dish-image';
+import { DishPortionSizes } from '@/components/dish/DishPortionSizes';
 import { DishDetail, type Menu, type MenuItem } from '@/types/menu';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { VegIndicatorDot } from '@/components/ui/VegIndicatorDot';
 import { ErrorState } from '@/components/ui/ErrorState';
 import { DishCard } from '@/components/ui/DishCard';
 import { DishFavoriteButton } from '@/components/ui/DishFavoriteButton';
-
-function formatPrice(price: number | string | null | undefined): string | null {
-  if (price == null) return null;
-  const num = typeof price === 'string' ? parseFloat(price) : price;
-  if (isNaN(num)) return null;
-  return num.toFixed(2);
-}
 
 export default function DishDetailPage() {
   const params = useParams();
@@ -129,7 +123,12 @@ export default function DishDetailPage() {
     );
   }
 
-  const priceFormatted = formatPrice(dish.price);
+  const portions = dish.portions ?? [];
+  const hasPortionSizes = portions.some((p) => p.is_available !== false);
+  const singlePriceLabel =
+    dish.price != null && !Number.isNaN(Number(dish.price))
+      ? `LKR ${Number(dish.price).toLocaleString()}`
+      : null;
   const resolvedImage = resolveDishDisplayImageUrl(dish);
   const imageSrc = resolvedImage && !imageError ? resolvedImage : null;
   const isAvailable = dish.is_available !== false;
@@ -170,75 +169,81 @@ export default function DishDetailPage() {
           </span>
         </nav>
 
-        <div className="relative overflow-hidden rounded-2xl">
-          {imageSrc ? (
-            // eslint-disable-next-line @next/next/no-img-element -- remote dish URLs
-            <img
-              src={imageSrc}
-              alt={dish.name}
-              className="h-[220px] w-full object-cover sm:h-[320px]"
-              onError={() => setImageError(true)}
-            />
-          ) : (
-            <div
-              className="flex h-[220px] w-full items-center justify-center text-5xl opacity-40 sm:h-[320px]"
-              style={{ backgroundColor: 'var(--border)' }}
-            >
-              🍽
-            </div>
-          )}
+        <div>
+          <div className="relative overflow-hidden rounded-2xl">
+            {imageSrc ? (
+              // eslint-disable-next-line @next/next/no-img-element -- remote dish URLs
+              <img
+                src={imageSrc}
+                alt={dish.name}
+                className="h-[220px] w-full object-cover sm:h-[320px]"
+                onError={() => setImageError(true)}
+              />
+            ) : (
+              <div
+                className="flex h-[220px] w-full items-center justify-center text-5xl opacity-40 sm:h-[320px]"
+                style={{ backgroundColor: 'var(--border)' }}
+              >
+                🍽
+              </div>
+            )}
 
-          <div className="absolute right-2 top-2 z-[3] sm:right-3 sm:top-3">
-            <DishFavoriteButton
-              isFavourited={dishFavourites.isFavourited(dish.id)}
-              loading={dishFavourites.loadingDishId === dish.id}
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                void dishFavourites.toggle(dish.id);
-              }}
-            />
+            <div className="absolute right-2 top-2 z-[3] sm:right-3 sm:top-3">
+              <DishFavoriteButton
+                isFavourited={dishFavourites.isFavourited(dish.id)}
+                loading={dishFavourites.loadingDishId === dish.id}
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  void dishFavourites.toggle(dish.id);
+                }}
+              />
+            </div>
           </div>
 
-          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/30 to-transparent" />
+          <div className="mt-4">
+            <div className="flex items-start justify-between gap-3">
+              <h1
+                className="flex min-w-0 flex-1 items-center gap-2 text-xl font-semibold sm:text-2xl"
+                style={{ color: 'var(--text-primary)' }}
+              >
+                <span>{dish.name}</span>
+                <VegIndicatorDot veg={dish.veg} />
+              </h1>
 
-          <div className="absolute bottom-3 left-3 right-3 sm:bottom-4 sm:left-4 sm:right-4">
-            <h1 className="flex items-center gap-2 text-xl font-semibold text-white sm:text-2xl">
-              <span>{dish.name}</span>
-              <VegIndicatorDot veg={dish.veg} />
-            </h1>
+              {!hasPortionSizes && singlePriceLabel ? (
+                <span
+                  className="shrink-0 text-base font-semibold sm:text-lg"
+                  style={{ color: 'var(--accent-secondary)' }}
+                >
+                  {singlePriceLabel}
+                </span>
+              ) : null}
+            </div>
 
             <Link
               href={`/restaurants/${dish.restaurant_id}`}
-              className="mt-1.5 inline-block transition-opacity hover:opacity-85"
-              style={{
-                fontSize: '0.9rem',
-                color: 'var(--accent-primary)',
-                fontWeight: 500,
-              }}
+              className="mt-1.5 inline-block text-sm font-medium transition-opacity hover:opacity-85 sm:text-base"
+              style={{ color: 'var(--accent-primary)' }}
             >
               {dish.restaurant_name}
             </Link>
 
-            <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex flex-wrap gap-1.5 sm:gap-2">
-                {isAvailable ? (
-                  <span className="rounded-full bg-green-500/90 px-2 py-1 text-xs text-white shadow">
-                    ● Available
-                  </span>
-                ) : (
-                  <span className="rounded-full bg-red-500/90 px-2 py-1 text-xs text-white shadow">
-                    ● Unavailable
-                  </span>
-                )}
-              </div>
-
-              <span className="text-base font-semibold sm:text-lg" style={{ color: 'var(--accent-secondary)' }}>
-                {priceFormatted != null ? `LKR ${priceFormatted}` : 'LKR —'}
-              </span>
+            <div className="mt-3 flex flex-wrap gap-1.5 sm:gap-2">
+              {isAvailable ? (
+                <span className="rounded-full bg-green-500/90 px-2 py-1 text-xs text-white shadow">
+                  ● Available
+                </span>
+              ) : (
+                <span className="rounded-full bg-red-500/90 px-2 py-1 text-xs text-white shadow">
+                  ● Unavailable
+                </span>
+              )}
             </div>
           </div>
         </div>
+
+        {hasPortionSizes ? <DishPortionSizes portions={portions} /> : null}
 
         {dish.description?.trim() ? (
           <p className="text-sm leading-relaxed" style={{ color: 'var(--text-primary)' }}>

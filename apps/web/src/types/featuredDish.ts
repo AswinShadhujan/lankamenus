@@ -1,3 +1,10 @@
+/** Light portion row on discovery rails. */
+export type DishDiscoveryPortion = {
+  id: number;
+  name: string;
+  price: number;
+};
+
 /** Shared item from GET /dishes/featured and GET /dishes/trending */
 export type DishDiscoveryItem = {
   id: number;
@@ -9,6 +16,8 @@ export type DishDiscoveryItem = {
   is_recommended: boolean;
   click_count: number;
   menu_id: number;
+  has_portions?: boolean;
+  portions?: DishDiscoveryPortion[];
   restaurant: {
     id: number;
     name: string;

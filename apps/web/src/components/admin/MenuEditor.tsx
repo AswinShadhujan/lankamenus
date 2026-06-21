@@ -1,11 +1,13 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
 import axios from 'axios';
 import api from '@/lib/api';
 import { resolveDishDisplayImageUrl } from '@/lib/dish-image';
 import { DishImagePreview } from '@/components/admin/DishImagePreview';
 import { DishImageEditorSection } from '@/components/admin/DishImageEditorSection';
+import { MenuItemPortionsSection } from '@/components/admin/MenuItemPortionsSection';
 import {
   formatIngredientsBulletLine,
   formatIngredientsCommaInput,
@@ -101,6 +103,7 @@ type MenuEditorProps = {
 };
 
 export function MenuEditor({ restaurantId }: MenuEditorProps) {
+  const router = useRouter();
   const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
   const [menu, setMenu] = useState<Menu | null>(null);
   const [initLoading, setInitLoading] = useState(true);
@@ -133,6 +136,8 @@ export function MenuEditor({ restaurantId }: MenuEditorProps) {
   const [editItemPrice, setEditItemPrice] = useState('');
   const [editItemIngredients, setEditItemIngredients] = useState('');
   const [editItemImageUrl, setEditItemImageUrl] = useState('');
+  const [editHasPortions, setEditHasPortions] = useState(false);
+  const [editMinPortionPrice, setEditMinPortionPrice] = useState<number | null>(null);
   const [itemBusy, setItemBusy] = useState<number | null>(null);
   const [editImageUploadVersion, setEditImageUploadVersion] = useState(0);
   /** Picked image file for inline edit; uploaded on Save (after PATCH), not on pick. */
@@ -436,18 +441,10 @@ export function MenuEditor({ restaurantId }: MenuEditorProps) {
         }
       }
 
-      const { data: freshMenu } = await api.get<Menu>(`/menus/${menuId}`);
-      setMenu(normalizeMenu(freshMenu));
-
-      setNewItemName((prev) => ({ ...prev, [sectionId]: '' }));
-      setNewItemPrice((prev) => ({ ...prev, [sectionId]: '' }));
-      setNewItemVeg((prev) => ({ ...prev, [sectionId]: false }));
-      setNewItemIngredients((prev) => ({ ...prev, [sectionId]: '' }));
-      setNewItemImageUrl((prev) => ({ ...prev, [sectionId]: '' }));
-      setNewItemIsAvailable((prev) => ({ ...prev, [sectionId]: true }));
-      setNewItemIsPopular((prev) => ({ ...prev, [sectionId]: false }));
-      setNewItemIsRecommended((prev) => ({ ...prev, [sectionId]: false }));
-      if (fileInput) fileInput.value = '';
+      router.push(
+        `/admin/restaurants/${restaurantId}/menus/${menuId}/items/${created.id}/edit`,
+      );
+      return;
     } catch (e: unknown) {
       setError(axiosErrorMessage(e) || 'Failed to add dish');
     } finally {
@@ -486,18 +483,46 @@ export function MenuEditor({ restaurantId }: MenuEditorProps) {
     editItemPendingImageRef.current = null;
     setEditImageUploadVersion((n) => n + 1);
     setEditingItemId(null);
+    setEditHasPortions(false);
+    setEditMinPortionPrice(null);
   };
 
   const startEditItem = (item: MenuItem) => {
     editItemPendingImageRef.current = null;
     setEditingItemId(item.id);
     setEditImageUploadVersion((n) => n + 1);
+    setEditHasPortions(false);
+    setEditMinPortionPrice(null);
     setEditItemName(item.name);
     setEditItemPrice(
       item.price != null ? String(parsePrice(item.price) ?? '') : '',
     );
     setEditItemIngredients(formatIngredientsCommaInput(item.ingredients));
     setEditItemImageUrl(item.image_url?.trim() ?? '');
+  };
+
+  const syncMenuItemPriceInState = (sectionId: number, itemId: number, price: number | null) => {
+    setMenu((m) =>
+      m
+        ? normalizeMenu({
+            ...m,
+            menu_sections: (m.menu_sections ?? []).map((s) =>
+              s.id === sectionId
+                ? {
+                    ...s,
+                    menu_items: (s.menu_items ?? []).map((it) =>
+                      it.id === itemId ? { ...it, price } : it,
+                    ),
+                  }
+                : s,
+            ),
+          })
+        : m,
+    );
+    if (price != null) {
+      setEditItemPrice(String(price));
+      setEditMinPortionPrice(price);
+    }
   };
 
   /** Stage file for upload when user clicks Save dish (preview only until then). */
@@ -529,11 +554,15 @@ export function MenuEditor({ restaurantId }: MenuEditorProps) {
       setError('Item name is required');
       return;
     }
-    const priceStr = editItemPrice.trim();
-    const price = parseFloat(priceStr);
-    if (!priceStr || Number.isNaN(price) || price <= 0) {
-      setError('Enter a price greater than 0');
-      return;
+    let price: number | undefined;
+    if (!editHasPortions) {
+      const priceStr = editItemPrice.trim();
+      const parsed = parseFloat(priceStr);
+      if (!priceStr || Number.isNaN(parsed) || parsed <= 0) {
+        setError('Enter a price greater than 0');
+        return;
+      }
+      price = parsed;
     }
     const ingredients = parseIngredientsFromCommaInput(editItemIngredients);
     const urlRaw = editItemImageUrl.trim();
@@ -558,7 +587,7 @@ export function MenuEditor({ restaurantId }: MenuEditorProps) {
                         ? {
                             ...it,
                             name,
-                            price,
+                            ...(price !== undefined ? { price } : {}),
                             ingredients,
                             image_url,
                           }
@@ -574,7 +603,7 @@ export function MenuEditor({ restaurantId }: MenuEditorProps) {
     try {
       await api.patch(`/menus/${menuId}/items/${itemId}`, {
         name,
-        price,
+        ...(price !== undefined ? { price } : {}),
         ingredients,
         image_url,
       });
@@ -937,23 +966,66 @@ export function MenuEditor({ restaurantId }: MenuEditorProps) {
                                     if (e.key === 'Escape') cancelEditItem();
                                   }}
                                 />
-                                <input
-                                  ref={editPriceRef}
-                                  type="text"
-                                  inputMode="decimal"
-                                  value={editItemPrice}
-                                  onChange={(e) => setEditItemPrice(e.target.value)}
-                                  placeholder="Price"
-                                  className="admin-input w-24 py-0.5 text-xs"
-                                  onKeyDown={(e) => {
-                                    if (e.key === 'Enter') {
-                                      e.preventDefault();
-                                      editIngredientsRef.current?.focus();
-                                    }
-                                    if (e.key === 'Escape') cancelEditItem();
+                                {editHasPortions ? (
+                                  <div className="flex min-w-[8rem] flex-col gap-0.5">
+                                    <input
+                                      ref={editPriceRef}
+                                      type="text"
+                                      readOnly
+                                      disabled
+                                      value={
+                                        editMinPortionPrice != null
+                                          ? editMinPortionPrice.toFixed(2)
+                                          : editItemPrice
+                                      }
+                                      className="admin-input w-28 cursor-not-allowed py-0.5 text-xs opacity-60"
+                                      aria-label="Price (auto from portions)"
+                                    />
+                                    <span className="text-xs leading-tight text-[var(--text-secondary)]">
+                                      Auto-set to lowest portion price
+                                      {editMinPortionPrice != null
+                                        ? ` (LKR ${editMinPortionPrice.toLocaleString(undefined, {
+                                            minimumFractionDigits: 2,
+                                            maximumFractionDigits: 2,
+                                          })})`
+                                        : ''}
+                                    </span>
+                                  </div>
+                                ) : (
+                                  <input
+                                    ref={editPriceRef}
+                                    type="text"
+                                    inputMode="decimal"
+                                    value={editItemPrice}
+                                    onChange={(e) => setEditItemPrice(e.target.value)}
+                                    placeholder="Price"
+                                    className="admin-input w-24 py-0.5 text-xs"
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter') {
+                                        e.preventDefault();
+                                        editIngredientsRef.current?.focus();
+                                      }
+                                      if (e.key === 'Escape') cancelEditItem();
+                                    }}
+                                  />
+                                )}
+                              </div>
+                              {!pending && item.id > 0 ? (
+                                <MenuItemPortionsSection
+                                  itemId={item.id}
+                                  disabled={busy}
+                                  onMetaChange={({ hasPortions, minPrice }) => {
+                                    setEditHasPortions(hasPortions);
+                                    setEditMinPortionPrice(minPrice);
+                                  }}
+                                  onMenuItemPriceSynced={(price) => {
+                                    syncMenuItemPriceInState(section.id, item.id, price);
+                                  }}
+                                  onError={(msg) => {
+                                    if (msg) setError(msg);
                                   }}
                                 />
-                              </div>
+                              ) : null}
                               <input
                                 ref={editIngredientsRef}
                                 type="text"
@@ -980,7 +1052,7 @@ export function MenuEditor({ restaurantId }: MenuEditorProps) {
                                   hint="File upload runs when you click Save dish (after text fields are saved)."
                                 />
                               </div>
-                              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[10px] text-[var(--text-secondary)]">
+                              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-[var(--text-secondary)]">
                                 <label className="flex cursor-pointer items-center gap-1">
                                   <input
                                     type="checkbox"
@@ -1072,7 +1144,7 @@ export function MenuEditor({ restaurantId }: MenuEditorProps) {
                                   </div>
                                   {ingredientsLine ? (
                                     <p
-                                      className="mt-0.5 text-[10px] leading-snug text-[var(--text-secondary)]"
+                                      className="mt-0.5 text-xs leading-snug text-[var(--text-secondary)]"
                                       title={ingredientsLine}
                                     >
                                       {ingredientsLine}
@@ -1082,7 +1154,7 @@ export function MenuEditor({ restaurantId }: MenuEditorProps) {
                                 <span className="shrink-0 text-xs tabular-nums text-[var(--text-secondary)]">
                                   {formatMoney(item.price, item.currency)}
                                 </span>
-                                <div className="flex shrink-0 flex-wrap gap-1.5 text-[10px]">
+                                <div className="flex shrink-0 flex-wrap gap-1.5 text-xs">
                                   {item.is_popular ? (
                                     <span className="rounded bg-amber-500/15 px-1.5 py-0.5 text-amber-800 dark:text-amber-200">
                                       🔥 Popular
@@ -1104,7 +1176,7 @@ export function MenuEditor({ restaurantId }: MenuEditorProps) {
                                   </span>
                                 </div>
                               </div>
-                              <div className="flex w-full flex-wrap items-center justify-between gap-x-3 gap-y-1 text-[10px]">
+                              <div className="flex w-full flex-wrap items-center justify-between gap-x-3 gap-y-1 text-xs">
                                 <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                                   <label className="flex cursor-pointer items-center gap-1 text-[var(--text-secondary)]">
                                     <input
@@ -1210,7 +1282,7 @@ export function MenuEditor({ restaurantId }: MenuEditorProps) {
                       <p className="mb-2 text-xs font-semibold text-[var(--text-primary)]">New dish</p>
 
                       <div className="space-y-1.5">
-                        <p className="text-[10px] font-medium uppercase tracking-wide text-[var(--text-secondary)]">
+                        <p className="text-xs font-medium uppercase tracking-wide text-[var(--text-secondary)]">
                           Basic
                         </p>
                         <div className="grid gap-2 sm:grid-cols-2">
@@ -1238,17 +1310,23 @@ export function MenuEditor({ restaurantId }: MenuEditorProps) {
                         </div>
                       </div>
 
+                      <MenuItemPortionsSection
+                        itemId={null}
+                        disabled={creatingHere}
+                        awaitingSave
+                      />
+
                       <div className="mt-3 space-y-1.5">
-                        <p className="text-[10px] font-medium uppercase tracking-wide text-[var(--text-secondary)]">
+                        <p className="text-xs font-medium uppercase tracking-wide text-[var(--text-secondary)]">
                           Image
                         </p>
-                        <p className="text-[10px] text-[var(--text-secondary)]">
+                        <p className="text-xs text-[var(--text-secondary)]">
                           Upload preferred. If you pick a file, it replaces any URL below for this save.
                         </p>
                         <input
                           type="file"
                           accept="image/jpeg,image/png,image/webp,image/gif"
-                          className="max-w-full text-[10px] file:mr-2 file:rounded file:border-0 file:bg-[var(--accent-primary)] file:px-2 file:py-1 file:text-xs file:text-white"
+                          className="max-w-full text-xs file:mr-2 file:rounded file:border-0 file:bg-[var(--accent-primary)] file:px-2 file:py-1 file:text-xs file:text-white"
                           disabled={creatingHere}
                           ref={(el) => {
                             if (el) newItemFileInputRefs.current.set(section.id, el);
@@ -1268,7 +1346,7 @@ export function MenuEditor({ restaurantId }: MenuEditorProps) {
                       </div>
 
                       <div className="mt-3 space-y-1.5">
-                        <p className="text-[10px] font-medium uppercase tracking-wide text-[var(--text-secondary)]">
+                        <p className="text-xs font-medium uppercase tracking-wide text-[var(--text-secondary)]">
                           Ingredients
                         </p>
                         <input
@@ -1287,7 +1365,7 @@ export function MenuEditor({ restaurantId }: MenuEditorProps) {
                       </div>
 
                       <div className="mt-3">
-                        <p className="mb-1.5 text-[10px] font-medium uppercase tracking-wide text-[var(--text-secondary)]">
+                        <p className="mb-1.5 text-xs font-medium uppercase tracking-wide text-[var(--text-secondary)]">
                           Options
                         </p>
                         <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-xs">

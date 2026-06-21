@@ -11,7 +11,7 @@ function InfoRowIcon({ children }: { children: ReactNode }) {
   return (
     <span
       className="flex h-5 w-5 shrink-0 items-center justify-center"
-      style={{ color: '#333333' }}
+      style={{ color: 'var(--text-primary)' }}
       aria-hidden
     >
       {children}
@@ -47,7 +47,7 @@ function DietIndicator({ label, positive }: { label: string; positive: boolean }
   return (
     <span
       className="inline-flex items-center gap-1 text-sm"
-      style={{ color: '#000000' }}
+      style={{ color: 'var(--text-primary)' }}
       aria-label={positive ? `${label} available` : `${label} not available`}
     >
       {label} {positive ? '✅' : '❌'}
@@ -62,7 +62,7 @@ function PriceRangeBadge({ level }: { level: number }) {
       className="inline-flex items-center rounded-md px-2 py-0.5 text-sm font-semibold tracking-wide"
       style={{
         backgroundColor: 'transparent',
-        color: '#000000',
+        color: 'var(--text-primary)',
         border: '1px solid #E0E0E0',
       }}
       aria-label={`Price range ${count} of 4`}
@@ -123,7 +123,7 @@ export function RestaurantDetailMobileInfo({
             <InfoRow icon={<InfoRowIcon><MapPinIcon /></InfoRowIcon>}>
               <span className="block truncate">{address || location}</span>
               {address && location ? (
-                <span className="mt-0.5 block truncate text-xs text-[#333333]">
+                <span className="mt-0.5 block truncate text-xs text-[var(--text-primary)]">
                   {location}
                 </span>
               ) : null}
@@ -144,7 +144,7 @@ export function RestaurantDetailMobileInfo({
             <RowDivider />
             <InfoRow icon={<InfoRowIcon><DollarIcon /></InfoRowIcon>}>
               <div className="flex items-center justify-between gap-3">
-                <span className="text-sm text-black">
+                <span className="text-sm text-[var(--text-primary)]">
                   Price range
                 </span>
                 <PriceRangeBadge level={restaurant.price_level!} />
@@ -162,7 +162,7 @@ export function RestaurantDetailMobileInfo({
               className="inline-flex items-center rounded-full px-3 py-1.5 text-xs font-medium"
               style={{
                 backgroundColor: 'color-mix(in srgb, var(--border) 25%, var(--surface))',
-                color: '#333333',
+                color: 'var(--text-primary)',
                 border: '1px solid #E0E0E0',
               }}
             >

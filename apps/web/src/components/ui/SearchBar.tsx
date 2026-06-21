@@ -86,7 +86,7 @@ export function SearchBar({
               {(['dishes', 'restaurants'] as const).map((s, i) => (
                 <span key={s} className="flex items-center gap-0.5">
                   {i > 0 && (
-                    <span className="select-none text-[10px] opacity-40" style={{ color: 'var(--text-secondary)' }} aria-hidden>
+                    <span className="select-none text-[10px] sm:text-xs" style={{ color: 'var(--text-secondary)' }} aria-hidden>
                       ·
                     </span>
                   )}

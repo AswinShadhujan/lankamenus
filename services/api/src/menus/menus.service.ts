@@ -18,6 +18,11 @@ import { UpdateSectionDto } from './dto/update-section.dto';
 import { CreateMenuItemDto } from './dto/create-menu-item.dto';
 import { UpdateMenuItemDto } from './dto/update-menu-item.dto';
 import { MediaService } from '../media/media.service';
+import {
+  buildDishPortionFields,
+  PORTIONS_ADMIN_INCLUDE,
+  PORTIONS_DETAIL_INCLUDE,
+} from './portion.mapper';
 
 /** Text match on dish `name` only (exact / prefix / includes; query already lowercased). */
 function dishNameTextMatchScore(name: string, qLower: string): number {
@@ -110,7 +115,10 @@ export class MenusService {
           include: {
             menu_items: {
               orderBy: { sort_order: 'asc' },
-              include: { media_asset: true },
+              include: {
+                media_asset: true,
+                ...PORTIONS_ADMIN_INCLUDE,
+              },
             },
           },
         },
@@ -587,6 +595,7 @@ export class MenusService {
       where: { id: itemId },
       include: {
         media_asset: true,
+        ...PORTIONS_DETAIL_INCLUDE,
         menu_section: {
           include: {
             menu: {
@@ -613,12 +622,16 @@ export class MenusService {
       );
     }
 
+    const portionFields = buildDishPortionFields(item.menu_item_portions);
+
     return {
       id: item.id,
       name: item.name,
       description: item.description,
-      price: item.price,
+      price: item.price != null ? Number(item.price) : null,
       currency: item.currency,
+      portions: portionFields.portions,
+      has_portions: portionFields.has_portions,
       veg: item.veg,
       sort_order: item.sort_order,
       ingredients: item.ingredients ?? [],

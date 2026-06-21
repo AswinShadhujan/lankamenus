@@ -118,7 +118,11 @@ export function RestaurantCard({
           </div>
           <div
             className={`mt-auto space-y-0.5 ${
-              isRail ? 'min-h-[2.5rem] text-xs' : isCompact ? 'min-h-[1.875rem] text-xs' : 'text-small'
+              isRail
+                ? 'min-h-[2.5rem] text-[13px]'
+                : isCompact
+                  ? 'min-h-[1.875rem] text-xs'
+                  : 'text-small'
             }`}
           >
             {restaurant.distance_km != null ? (

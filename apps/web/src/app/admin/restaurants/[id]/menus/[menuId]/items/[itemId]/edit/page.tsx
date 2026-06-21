@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import api from '@/lib/api';
 import { DishImageEditorSection } from '@/components/admin/DishImageEditorSection';
+import { MenuItemPortionsSection } from '@/components/admin/MenuItemPortionsSection';
 import { Menu, MenuSection, MenuItem } from '@/types/menu';
 
 export default function EditItemPage() {
@@ -19,6 +20,8 @@ export default function EditItemPage() {
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [price, setPrice] = useState('');
+  const [hasPortions, setHasPortions] = useState(false);
+  const [minPortionPrice, setMinPortionPrice] = useState<number | null>(null);
   const [veg, setVeg] = useState(false);
   const [sort_order, setSortOrder] = useState(0);
   const [ingredients, setIngredients] = useState('');
@@ -265,15 +268,55 @@ export default function EditItemPage() {
           <label htmlFor="price" className="admin-label">
             Price
           </label>
-          <input
-            id="price"
-            type="text"
-            value={price}
-            onChange={(e) => setPrice(e.target.value)}
-            placeholder="e.g. 450"
-            className="admin-input max-w-[8rem]"
-          />
+          {hasPortions ? (
+            <>
+              <input
+                id="price"
+                type="text"
+                readOnly
+                disabled
+                value={
+                  minPortionPrice != null
+                    ? minPortionPrice.toFixed(2)
+                    : price
+                }
+                className="admin-input max-w-[8rem] cursor-not-allowed opacity-60"
+              />
+              <p className="mt-1 text-small text-[var(--text-secondary)]">
+                Auto-set to lowest portion price
+                {minPortionPrice != null
+                  ? ` (LKR ${minPortionPrice.toLocaleString(undefined, {
+                      minimumFractionDigits: 2,
+                      maximumFractionDigits: 2,
+                    })})`
+                  : ''}
+              </p>
+            </>
+          ) : (
+            <input
+              id="price"
+              type="text"
+              value={price}
+              onChange={(e) => setPrice(e.target.value)}
+              placeholder="e.g. 450"
+              className="admin-input max-w-[8rem]"
+            />
+          )}
         </div>
+        <MenuItemPortionsSection
+          itemId={itemId}
+          disabled={loading}
+          onMetaChange={({ hasPortions: hp, minPrice }) => {
+            setHasPortions(hp);
+            setMinPortionPrice(minPrice);
+          }}
+          onMenuItemPriceSynced={(p) => {
+            if (p != null) setPrice(String(p));
+          }}
+          onError={(msg) => {
+            if (msg) setError(msg);
+          }}
+        />
         <label className="admin-checkbox-label">
           <input type="checkbox" checked={veg} onChange={(e) => setVeg(e.target.checked)} />
           Vegetarian

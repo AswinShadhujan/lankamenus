@@ -124,9 +124,25 @@ model menu_items {
   menu_section         menu_sections          @relation(fields: [menu_section_id], references: [id], onDelete: Cascade)
   media_asset          media_assets?          @relation(fields: [media_asset_id], references: [id], onDelete: SetNull)
   user_dish_favourites user_dish_favourites[]
+  menu_item_portions   menu_item_portions[]
 
   @@index([menu_section_id])
   @@index([media_asset_id])
+}
+
+model menu_item_portions {
+  id           Int        @id @default(autoincrement())
+  menu_item_id Int        @map("menu_item_id")
+  name         String
+  price        Decimal    @db.Decimal(10, 2)
+  is_available Boolean    @default(true) @map("is_available")
+  sort_order   Int        @default(0) @map("sort_order")
+  serves       Int?       @map("serves")
+  created_at   DateTime   @default(now())
+  updated_at   DateTime   @updatedAt
+  menu_item    menu_items @relation(fields: [menu_item_id], references: [id], onDelete: Cascade)
+
+  @@index([menu_item_id])
 }
 
 model restaurant_extra_costs {

@@ -174,7 +174,7 @@ function RestaurantRow({
               {tags.map((tag) => (
                 <span
                   key={tag}
-                  className="inline-block max-w-full truncate rounded-full border px-2 py-0.5 text-[10px] font-medium leading-tight"
+                  className="inline-block max-w-full truncate rounded-full border px-2 py-0.5 text-[10px] font-medium leading-tight sm:text-xs"
                   style={{
                     borderColor: 'var(--border)',
                     color: 'var(--text-secondary)',

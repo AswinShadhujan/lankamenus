@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { NotFoundException, BadRequestException } from '@nestjs/common';
 import type { Request } from 'express';
 import { MenusService } from './menus.service';
+import { MenuItemPortionsService } from './menu-item-portions.service';
 import { MediaService } from '../media/media.service';
 import { MenuItemClickTrackerService } from './menu-item-click-tracker.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -17,6 +18,7 @@ import { PrismaClientKnownRequestError } from '@prisma/client/runtime/library';
 
 describe('MenusService', () => {
   let service: MenusService;
+  let portionsService: MenuItemPortionsService;
   let prisma: PrismaService;
   let mockClickTracker: { shouldIncrementClick: jest.Mock };
 
@@ -71,6 +73,14 @@ describe('MenusService', () => {
       },
       menu_items: {
         findFirst: jest.fn().mockResolvedValue(null),
+        findUnique: jest.fn().mockResolvedValue(null),
+        create: jest.fn().mockResolvedValue(null),
+        update: jest.fn().mockResolvedValue(null),
+        delete: jest.fn().mockResolvedValue(undefined),
+      },
+      menu_item_portions: {
+        findMany: jest.fn().mockResolvedValue([]),
+        findFirst: jest.fn().mockResolvedValue(null),
         create: jest.fn().mockResolvedValue(null),
         update: jest.fn().mockResolvedValue(null),
         delete: jest.fn().mockResolvedValue(undefined),
@@ -102,6 +112,7 @@ describe('MenusService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         MenusService,
+        MenuItemPortionsService,
         { provide: PrismaService, useValue: mockPrisma },
         { provide: SearchService, useValue: mockSearchService },
         { provide: CacheService, useValue: mockCacheService },
@@ -111,6 +122,7 @@ describe('MenusService', () => {
     }).compile();
 
     service = module.get<MenusService>(MenusService);
+    portionsService = module.get<MenuItemPortionsService>(MenuItemPortionsService);
     prisma = module.get<PrismaService>(PrismaService);
   });
 
@@ -383,6 +395,7 @@ describe('MenusService', () => {
       rating_count: 28,
       image_url: 'https://example.com/burger.jpg',
       media_asset: null,
+      menu_item_portions: [],
       menu_section: {
         id: 1,
         name: 'Starters',
@@ -431,6 +444,8 @@ describe('MenusService', () => {
         name: 'Soup',
         description: null,
         price: null,
+        portions: [],
+        has_portions: false,
         currency: 'LKR',
         veg: false,
         sort_order: 0,
@@ -462,6 +477,7 @@ describe('MenusService', () => {
         rating_count: null,
         image_url: null,
         media_asset: null,
+        menu_item_portions: [],
         menu_section: {
           id: 1,
           name: 'Starters',
@@ -490,6 +506,68 @@ describe('MenusService', () => {
       jest.spyOn(prisma, '$executeRaw').mockClear();
       await service.findOneItem(1, 1, mockReq);
       expect(prisma.$executeRaw).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('portions', () => {
+    it('listPortions returns portions ordered for a menu item', async () => {
+      jest.spyOn(prisma.menu_items, 'findUnique').mockResolvedValue({ id: 1 } as never);
+      jest.spyOn(prisma.menu_item_portions, 'findMany').mockResolvedValue([
+        {
+          id: 2,
+          menu_item_id: 1,
+          name: 'Large',
+          price: 1200,
+          is_available: true,
+          sort_order: 1,
+          serves: 2,
+          created_at: new Date(),
+          updated_at: new Date(),
+        },
+      ] as never);
+
+      const result = await portionsService.listPortions(1);
+      expect(result).toEqual({
+        portions: [
+          {
+            id: 2,
+            name: 'Large',
+            price: 1200,
+            is_available: true,
+            sort_order: 1,
+            serves: 2,
+          },
+        ],
+      });
+    });
+
+    it('createPortion syncs minimum price on menu item', async () => {
+      jest.spyOn(prisma.menu_items, 'findUnique').mockResolvedValue({ id: 1 } as never);
+      jest.spyOn(prisma.menu_item_portions, 'create').mockResolvedValue({
+        id: 3,
+        menu_item_id: 1,
+        name: 'Regular',
+        price: 850,
+        is_available: true,
+        sort_order: 0,
+        serves: null,
+        created_at: new Date(),
+        updated_at: new Date(),
+      } as never);
+      jest.spyOn(prisma.menu_item_portions, 'findMany').mockResolvedValue([
+        { price: 850 },
+      ] as never);
+      jest.spyOn(prisma.menu_items, 'findFirst').mockResolvedValue({
+        menu_section: { menu: { restaurant_id: 1, id: 1 } },
+      } as never);
+      jest.spyOn(prisma.menu_items, 'update').mockResolvedValue({} as never);
+
+      const result = await portionsService.createPortion(1, { name: 'Regular', price: 850 });
+      expect(result.name).toBe('Regular');
+      expect(prisma.menu_items.update).toHaveBeenCalledWith({
+        where: { id: 1 },
+        data: { price: 850 },
+      });
     });
   });
 });

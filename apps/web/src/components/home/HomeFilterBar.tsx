@@ -4,6 +4,7 @@ import {
   createContext,
   useCallback,
   useContext,
+  useMemo,
   useState,
   type CSSProperties,
   type ReactNode,
@@ -33,7 +34,7 @@ function filterBtnStyle(active: boolean): CSSProperties {
 }
 
 const FILTER_BTN_CLASS =
-  'shrink-0 rounded-full border border-solid px-2.5 py-1 text-xs font-medium whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--accent-primary)]';
+  'shrink-0 rounded-full border border-solid px-2.5 py-1 text-xs font-medium whitespace-nowrap transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[var(--accent-primary)] sm:text-sm';
 
 const FILTER_ROW_CLASS =
   'hide-scrollbar mb-3 flex flex-nowrap items-center gap-2 overflow-x-auto sm:mb-4 [-webkit-overflow-scrolling:touch]';
@@ -127,6 +128,7 @@ export function HomeFiltersProvider({
   const [draftSortChoice, setDraftSortChoice] = useState<RestaurantSortChoice>('none');
   const [draftCategories, setDraftCategories] = useState<string[]>([]);
   const [draftDistrict, setDraftDistrict] = useState<string>('');
+  const [districtSearch, setDistrictSearch] = useState('');
 
   const locationGranted = props.userLocation.status === 'granted';
 
@@ -158,8 +160,15 @@ export function HomeFiltersProvider({
 
   const openDistrictModal = () => {
     setDraftDistrict(props.selectedDistricts[0] ?? '');
+    setDistrictSearch('');
     setDistrictModalOpen(true);
   };
+
+  const filteredDistricts = useMemo(() => {
+    const q = districtSearch.trim().toLowerCase();
+    if (!q) return props.districts;
+    return props.districts.filter((d) => d.name.toLowerCase().includes(q));
+  }, [props.districts, districtSearch]);
 
   const toggleDraftCategory = useCallback((label: string) => {
     setDraftCategories((prev) =>
@@ -298,16 +307,38 @@ export function HomeFiltersProvider({
       <FilterCenterModal
         open={districtModalOpen}
         title="Filter by district"
-        onClose={() => setDistrictModalOpen(false)}
+        onClose={() => {
+          setDistrictSearch('');
+          setDistrictModalOpen(false);
+        }}
         onApply={() => {
           props.onDistrictApply(draftDistrict ? [draftDistrict] : []);
+          setDistrictSearch('');
           setDistrictModalOpen(false);
         }}
         onClear={() => {
           props.onDistrictApply([]);
+          setDraftDistrict('');
+          setDistrictSearch('');
           setDistrictModalOpen(false);
         }}
       >
+        <label className="mb-3 block">
+          <span className="sr-only">Search districts</span>
+          <input
+            type="search"
+            value={districtSearch}
+            onChange={(e) => setDistrictSearch(e.target.value)}
+            placeholder="Search districts…"
+            className="w-full rounded-lg border px-3 py-2 text-sm outline-none transition-colors focus:border-[var(--accent-primary)]"
+            style={{
+              borderColor: 'var(--border)',
+              backgroundColor: 'var(--background)',
+              color: 'var(--text-primary)',
+            }}
+            autoComplete="off"
+          />
+        </label>
         <ul className="m-0 max-h-[min(50vh,320px)] list-none space-y-1 overflow-y-auto p-0">
           <li>
             <button
@@ -340,7 +371,15 @@ export function HomeFiltersProvider({
               All districts
             </button>
           </li>
-          {props.districts.map((d) => {
+          {filteredDistricts.length === 0 ? (
+            <li
+              className="px-3 py-4 text-center text-sm"
+              style={{ color: 'var(--text-secondary)' }}
+            >
+              No districts match your search.
+            </li>
+          ) : (
+            filteredDistricts.map((d) => {
             const active = draftDistrict === d.name;
             return (
               <li key={d.id}>
@@ -374,7 +413,8 @@ export function HomeFiltersProvider({
                 </button>
               </li>
             );
-          })}
+          })
+          )}
         </ul>
       </FilterCenterModal>
     </HomeFiltersContext.Provider>
@@ -427,7 +467,11 @@ export function HomeDishTypeFilterButton() {
       style={filterBtnStyle(!!selectedDishCategory)}
       aria-haspopup="dialog"
     >
-      {selectedDishCategory ? `🍽 ${selectedDishCategory} ▾` : '🍽 Dish type ▾'}
+      <span className="inline-flex items-center gap-1.5">
+        <span aria-hidden>🍽</span>
+        <span>{selectedDishCategory ?? 'Dish type'}</span>
+        <span aria-hidden>▾</span>
+      </span>
     </button>
   );
 }
@@ -488,7 +532,7 @@ export function HomeRestaurantFilterRow() {
 function HomePageSectionLabel({ children }: { children: string }) {
   return (
     <p
-      className="mb-2 text-[10px] font-semibold uppercase tracking-wider"
+      className="mb-2 text-[10px] font-semibold uppercase tracking-wider sm:text-xs"
       style={{ color: 'var(--text-secondary)' }}
     >
       {children}

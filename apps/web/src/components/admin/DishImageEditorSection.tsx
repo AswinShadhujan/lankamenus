@@ -124,7 +124,7 @@ export function DishImageEditorSection({
           />
           {fileInputDisabled ? 'Uploading…' : 'Choose image file'}
         </label>
-        <p className="mt-1 text-[10px] text-[var(--text-secondary)]">
+        <p className="mt-1 text-xs text-[var(--text-secondary)]">
           JPEG, PNG, WebP or GIF · max 5 MB. Replaces the dish cover once the upload request succeeds.
         </p>
       </div>
@@ -155,14 +155,14 @@ export function DishImageEditorSection({
           ) : null}
         </div>
         {showPrimaryApply ? (
-          <p className="mt-1 text-[10px] text-[var(--text-secondary)]">
+          <p className="mt-1 text-xs text-[var(--text-secondary)]">
             Apply stores the URL as managed cover.{' '}
             {showSecondaryUrl
               ? 'Use the legacy field below if you need the classic image_url column on save.'
               : null}
           </p>
         ) : (
-          <p className="mt-1 text-[10px] text-[var(--text-secondary)]">
+          <p className="mt-1 text-xs text-[var(--text-secondary)]">
             Saved with the dish when you click Save dish (legacy image field).
           </p>
         )}

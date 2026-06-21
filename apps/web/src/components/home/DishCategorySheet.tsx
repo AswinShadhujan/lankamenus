@@ -10,6 +10,7 @@ import { RestaurantCard } from '@/components/ui/RestaurantCard';
 import { HorizontalScroll } from '@/components/ui/HorizontalScroll';
 import { Skeleton, SkeletonCard } from '@/components/ui/Skeleton';
 import { DishFavoriteButton } from '@/components/ui/DishFavoriteButton';
+import { DishRailPrice } from '@/components/dish/DishRailPrice';
 import type { DishRailFavouritesProps } from '@/components/DishDiscoveryRailSection';
 
 export type DishCategorySheetProps = {
@@ -37,12 +38,6 @@ function buildApiUrl(path: string, params?: Record<string, string | number>): st
   return url.toString();
 }
 
-function formatPrice(price: number | null, currency: string): string | null {
-  if (price == null) return null;
-  const c = currency.trim().toUpperCase() || 'LKR';
-  return `${c} ${price.toFixed(2)}`;
-}
-
 function dishHref(d: DishDiscoveryItem): string {
   return `/restaurants/${d.restaurant.id}/menus/${d.menu_id}/items/${d.id}`;
 }
@@ -54,7 +49,6 @@ function SheetDishCard({
   dish: DishDiscoveryItem;
   dishFavourites?: DishRailFavouritesProps | null;
 }) {
-  const priceStr = formatPrice(dish.price, dish.currency);
   const img = resolvePublicMediaUrl(dish.image_url);
   return (
     <Link
@@ -103,11 +97,12 @@ function SheetDishCard({
         <p className="line-clamp-2 text-sm font-semibold leading-snug" style={{ color: 'var(--text-primary)' }}>
           {dish.name}
         </p>
-        {priceStr ? (
-          <p className="text-xs font-medium" style={{ color: 'var(--text-secondary)' }}>
-            {priceStr}
-          </p>
-        ) : null}
+        <DishRailPrice
+          price={dish.price}
+          currency={dish.currency}
+          hasPortions={Boolean(dish.has_portions)}
+          className="text-xs font-semibold leading-tight"
+        />
         <p className="mt-auto line-clamp-1 text-xs" style={{ color: 'var(--text-secondary)' }}>
           {dish.restaurant.name}
         </p>

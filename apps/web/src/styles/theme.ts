@@ -12,8 +12,8 @@ export const colors = {
   light: {
     background: '#FFFFFF',
     surface: '#F6F6F6',
-    textPrimary: '#111111',
-    textSecondary: '#666666',
+    textPrimary: '#000000',
+    textSecondary: '#000000',
     border: '#E5E5E5',
   },
 
@@ -22,7 +22,7 @@ export const colors = {
     background: '#0E0E0E',
     surface: '#1A1A1A',
     textPrimary: '#FFFFFF',
-    textSecondary: '#B0B0B0',
+    textSecondary: '#FFFFFF',
     border: '#2C2C2C',
   },
 } as const;
